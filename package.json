@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && npx prisma generate",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0 -p 3000",
     "server": "ts-node server/src/services/listener.ts",
     "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet"
   },
