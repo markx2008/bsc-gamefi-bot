@@ -17,18 +17,30 @@ interface IStakingVault {
 contract VaultManager is Ownable, ReentrancyGuard {
     IERC20 public usdt;
     address public stakingVault;
+    address public operationPool;
     address public platformTreasury;
 
-    uint256 public constant REWARD_PERCENT = 80;
-    uint256 public constant PLATFORM_PERCENT = 20;
+    uint256 public rewardPercent = 90;
+    uint256 public platformPercent = 10;
 
     event Deposit(address indexed user, uint256 amount, uint256 timestamp);
     event Withdrawal(address indexed user, uint256 amount, uint256 timestamp);
     event ProfitDistributed(uint256 totalAmount, uint256 rewardAmount, uint256 platformAmount);
+    event RatiosUpdated(uint256 newRewardPercent, uint256 newPlatformPercent);
 
     constructor(address _usdt, address _platformTreasury) Ownable(msg.sender) {
         usdt = IERC20(_usdt);
         platformTreasury = _platformTreasury;
+    }
+
+    /**
+     * @dev 讓管理員動態調整分紅比例 (總和需為 100)
+     */
+    function setDistributionRatios(uint256 _rewardPercent, uint256 _platformPercent) external onlyOwner {
+        require(_rewardPercent + _platformPercent == 100, "Total must be 100");
+        rewardPercent = _rewardPercent;
+        platformPercent = _platformPercent;
+        emit RatiosUpdated(_rewardPercent, _platformPercent);
     }
 
     function setStakingVault(address _stakingVault) external onlyOwner {
@@ -40,42 +52,21 @@ contract VaultManager is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 用戶儲值 USDT 入金
-     */
-    function deposit(uint256 _amount) external nonReentrant {
-        require(_amount > 0, "Deposit amount must be > 0");
-        require(usdt.transferFrom(msg.sender, address(this), _amount), "Transfer failed");
-        
-        emit Deposit(msg.sender, _amount, block.timestamp);
-    }
-
-    /**
-     * @dev 管理員批准後的提現發放
-     */
-    function adminWithdrawForUser(address _user, uint256 _amount) external onlyOwner nonReentrant {
-        require(usdt.balanceOf(address(this)) >= _amount, "Insufficient vault balance");
-        require(usdt.transfer(_user, _amount), "Withdraw transfer failed");
-        
-        emit Withdrawal(_user, _amount, block.timestamp);
-    }
-
-    /**
-     * @dev 每日結算：從後端計算昨日總利潤，一次性分紅
-     * 此函數應由後端服務器（管理員）調用
+     * @dev 每日結算：分紅邏輯改為動態比例
      */
     function distributeBatchProfit(uint256 _totalProfit) external onlyOwner nonReentrant {
         require(stakingVault != address(0), "Staking vault not set");
-        require(usdt.balanceOf(address(this)) >= _totalProfit, "Insufficient balance to distribute");
+        require(usdt.balanceOf(address(this)) >= _totalProfit, "Insufficient balance");
 
-        uint256 rewardAmount = (_totalProfit * REWARD_PERCENT) / 100;
+        uint256 rewardAmount = (_totalProfit * rewardPercent) / 100;
         uint256 platformAmount = _totalProfit - rewardAmount;
 
-        // 轉給收益寶並通知
-        require(usdt.transfer(stakingVault, rewardAmount), "Transfer to staking failed");
+        // 轉給收益寶
+        require(usdt.transfer(stakingVault, rewardAmount), "Transfer failed");
         IStakingVault(stakingVault).notifyRewardAmount(rewardAmount);
         
-        // 轉給平台國庫 (用於運營與利潤)
-        require(usdt.transfer(platformTreasury, platformAmount), "Transfer to treasury failed");
+        // 轉給平台國庫
+        require(usdt.transfer(platformTreasury, platformAmount), "Transfer failed");
 
         emit ProfitDistributed(_totalProfit, rewardAmount, platformAmount);
     }

@@ -1,0 +1,44 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             Int           @id @default(autoincrement())
+  tgId           String        @unique
+  walletAddress  String        @unique
+  balanceUsdt    Decimal       @default(0) @db.Decimal(36, 18)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  transactions   Transaction[]
+}
+
+model Transaction {
+  id          Int               @id @default(autoincrement())
+  userId      Int
+  user        User              @relation(fields: [userId], references: [id])
+  type        TransactionType
+  amount      Decimal           @db.Decimal(36, 18)
+  txHash      String?           @unique
+  status      TransactionStatus @default(PENDING)
+  createdAt   DateTime          @default(now())
+}
+
+enum TransactionType {
+  DEPOSIT
+  WITHDRAW
+  REWARD
+  GAME_LOSS
+  GAME_WIN
+}
+
+enum TransactionStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REJECTED
+}
