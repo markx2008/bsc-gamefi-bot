@@ -12,9 +12,10 @@
 - **隨機數公平性 (Fairness):** 
     - 儲值模式：Server Seed + Client Seed + Nonce (Provably Fair)
     - 關鍵操作：Chainlink VRF (選配，用於大額結算)
-- **後端引擎 (Backend):** Node.js (高速處理遊戲扣款與分紅)
+- **後端引擎 (Backend):** Node.js / NestJS (TypeScript - 高速處理遊戲扣款、分紅與管理 API)
 - **數據緩衝 (Cache):** Redis (處理秒級下注扣款)
-- **前端框架 (Frontend):** Next.js + Tailwind CSS (極簡數據風格)
+- **前端框架 (Frontend):** Next.js (TypeScript) + Tailwind CSS
+- **管理後台:** Admin Web Dashboard (SIWE 驗證，用於提現審核與對帳監控)
 - **平台載體 (Platform):** Telegram Mini App (TMA)
 - **錢包連結 (Web3):** RainbowKit + Wagmi
 
