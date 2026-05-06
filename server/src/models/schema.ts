@@ -1,17 +1,43 @@
 export interface User {
-    id: number;
-    tg_id: string;
-    wallet_address: string;
-    balance_usdt: bigint; // 使用 bigint 處理 18 位精度
-    created_at: Date;
+  id: number;
+  tgId: string;
+  walletAddress: string | null;
+  balanceUsdt: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface Transaction {
-    id: number;
-    user_id: number;
-    type: 'DEPOSIT' | 'WITHDRAW' | 'REWARD';
-    amount: bigint;
-    tx_hash: string;
-    status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REJECTED';
-    created_at: Date;
+  id: number;
+  userId: number;
+  type: 'DEPOSIT' | 'WITHDRAW' | 'REWARD' | 'GAME_LOSS' | 'GAME_WIN';
+  amount: string;
+  txHash: string | null;
+  status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REJECTED';
+  blockNumber?: bigint | null;
+  createdAt: Date;
+}
+
+export interface PendingDeposit {
+  id: number;
+  walletAddress: string;
+  amount: string;
+  txHash: string;
+  blockNumber?: bigint | null;
+  status: 'PENDING' | 'RESOLVED';
+  createdAt: Date;
+  resolvedAt?: Date | null;
+}
+
+export interface WithdrawalRequest {
+  id: number;
+  userId: number;
+  amount: string;
+  walletAddress: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'SENT' | 'FAILED';
+  txHash?: string | null;
+  reviewedBy?: string | null;
+  reviewedAt?: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
 }

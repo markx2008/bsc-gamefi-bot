@@ -4,32 +4,34 @@ async function main() {
   const [deployer] = await hre.ethers.getSigners();
   console.log("🚀 正在使用帳戶部署合約:", deployer.address);
 
-  // 1. 部署 USDT 模擬代幣 (僅用於測試網，如果是主網則填寫真實地址)
-  // 這裡假設我們需要一個測試用的 USDT
   const MockUSDT = await hre.ethers.getContractFactory("MockUSDT");
   const usdt = await MockUSDT.deploy();
-  await usdt.deployed();
-  console.log("💎 MockUSDT 部署於:", usdt.address);
+  await usdt.waitForDeployment();
+  const usdtAddress = await usdt.getAddress();
+  console.log("💎 MockUSDT 部署於:", usdtAddress);
 
-  // 2. 部署 VaultManager
-  const platformTreasury = deployer.address; // 暫時設為部署者地址
+  const platformTreasury = process.env.PLATFORM_TREASURY || deployer.address;
   const VaultManager = await hre.ethers.getContractFactory("VaultManager");
-  const vault = await VaultManager.deploy(usdt.address, platformTreasury);
-  await vault.deployed();
-  console.log("🏦 VaultManager 部署於:", vault.address);
+  const vault = await VaultManager.deploy(usdtAddress, platformTreasury);
+  await vault.waitForDeployment();
+  const vaultAddress = await vault.getAddress();
+  console.log("🏦 VaultManager 部署於:", vaultAddress);
 
-  // 3. 部署 StakingVault
   const StakingVault = await hre.ethers.getContractFactory("StakingVault");
-  const staking = await StakingVault.deploy(usdt.address);
-  await staking.deployed();
-  console.log("🥩 StakingVault 部署於:", staking.address);
+  const staking = await StakingVault.deploy(usdtAddress);
+  await staking.waitForDeployment();
+  const stakingAddress = await staking.getAddress();
+  console.log("🥩 StakingVault 部署於:", stakingAddress);
 
-  // 設定關聯
-  await vault.setStakingVault(staking.address);
-  console.log("✅ 已將 StakingVault 連結至 VaultManager");
+  await vault.setStakingVault(stakingAddress);
+  await staking.setVaultManager(vaultAddress);
+  console.log("✅ 已將 VaultManager 與 StakingVault 雙向連結");
 
   console.log("\n--- 部署完成 ---");
-  console.log("請將以上地址填入您的 .env 檔案中。");
+  console.log("USDT_ADDRESS=", usdtAddress);
+  console.log("VAULT_ADDRESS=", vaultAddress);
+  console.log("STAKING_VAULT_ADDRESS=", stakingAddress);
+  console.log("PLATFORM_TREASURY=", platformTreasury);
 }
 
 main().catch((error) => {

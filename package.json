@@ -5,15 +5,21 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
-    "build": "next build && npx prisma generate",
+    "build": "prisma generate && next build",
     "start": "next start -H 0.0.0.0 -p 3000",
     "server": "ts-node server/src/services/listener.ts",
+    "prisma:generate": "prisma generate",
+    "compile:contracts": "hardhat compile",
+    "test:contracts": "hardhat test",
     "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@chainlink/contracts": "^0.8.0",
+    "@openzeppelin/contracts": "^5.0.2",
+    "@prisma/client": "6.2.1",
     "@radix-ui/react-dialog": "^1.1.15",
     "@radix-ui/react-dropdown-menu": "^2.1.16",
     "@radix-ui/react-slot": "^1.2.4",
@@ -33,7 +39,8 @@
     "viem": "^2.48.8"
   },
   "devDependencies": {
-    "@prisma/client": "6.2.1",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "hardhat": "^2.22.19",
     "prisma": "6.2.1"
   }
 }

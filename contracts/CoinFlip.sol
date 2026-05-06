@@ -2,10 +2,10 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/VRFCoordinatorV2Interface.sol";
-import "@chainlink/contracts/src/v0.8/VRFConsumerBaseV2.sol";
+import "@chainlink/contracts/src/v0.8/vrf/VRFConsumerBaseV2.sol";
 
 /**
  * @title CoinFlip
@@ -97,13 +97,13 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
         } else {
             // 輸了：將資金轉入 VaultManager 進行分配
             require(usdt.approve(vaultManager, request.betAmount), "Approve failed");
-            // 這裡假設 VaultManager 有 distributeGameProfit 接口
+            // 這裡假設 VaultManager 有 distributeBatchProfit 接口
             // 注意：實際實作可能需要 VaultManager 透過 interface 調用
             emit BetSettled(request.player, request.betAmount, false, _requestId);
             
             // 轉交給 VaultManager
             (bool success, ) = vaultManager.call(
-                abi.encodeWithSignature("distributeGameProfit(uint256)", request.betAmount)
+                abi.encodeWithSignature("distributeBatchProfit(uint256)", request.betAmount)
             );
             require(success, "Distribution to vault failed");
         }

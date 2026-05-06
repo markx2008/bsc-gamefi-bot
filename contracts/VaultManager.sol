@@ -2,8 +2,9 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IStakingVault {
     function notifyRewardAmount(uint256 _amount) external;
@@ -11,13 +12,14 @@ interface IStakingVault {
 
 /**
  * @title VaultManager
- * @dev 處理 USDT 儲值、提現與分紅 (80% 收益寶, 20% 平台)。
+ * @dev 處理 USDT 儲值、提現與分紅 (90% 收益寶, 10% 平台)。
  * 支持半託管模式：鏈上儲值拋出事件，由後端記錄並管理遊戲。
  */
 contract VaultManager is Ownable, ReentrancyGuard {
-    IERC20 public usdt;
+    using SafeERC20 for IERC20;
+
+    IERC20 public immutable usdt;
     address public stakingVault;
-    address public operationPool;
     address public platformTreasury;
 
     uint256 public rewardPercent = 90;
@@ -27,10 +29,33 @@ contract VaultManager is Ownable, ReentrancyGuard {
     event Withdrawal(address indexed user, uint256 amount, uint256 timestamp);
     event ProfitDistributed(uint256 totalAmount, uint256 rewardAmount, uint256 platformAmount);
     event RatiosUpdated(uint256 newRewardPercent, uint256 newPlatformPercent);
+    event StakingVaultUpdated(address indexed stakingVault);
+    event PlatformTreasuryUpdated(address indexed platformTreasury);
 
     constructor(address _usdt, address _platformTreasury) Ownable(msg.sender) {
+        require(_usdt != address(0), "Invalid USDT");
+        require(_platformTreasury != address(0), "Invalid treasury");
         usdt = IERC20(_usdt);
         platformTreasury = _platformTreasury;
+    }
+
+    /**
+     * @dev 用戶儲值 USDT 到全局金庫，後端 listener 依 Deposit event 入帳。
+     */
+    function deposit(uint256 _amount) external nonReentrant {
+        require(_amount > 0, "Amount must be > 0");
+        usdt.safeTransferFrom(msg.sender, address(this), _amount);
+        emit Deposit(msg.sender, _amount, block.timestamp);
+    }
+
+    /**
+     * @dev 管理員審核後執行提現；用戶餘額扣減由後端資料庫事務處理。
+     */
+    function executeWithdrawal(address _user, uint256 _amount) external onlyOwner nonReentrant {
+        require(_user != address(0), "Invalid user");
+        require(_amount > 0, "Amount must be > 0");
+        usdt.safeTransfer(_user, _amount);
+        emit Withdrawal(_user, _amount, block.timestamp);
     }
 
     /**
@@ -44,35 +69,37 @@ contract VaultManager is Ownable, ReentrancyGuard {
     }
 
     function setStakingVault(address _stakingVault) external onlyOwner {
+        require(_stakingVault != address(0), "Invalid staking vault");
         stakingVault = _stakingVault;
+        emit StakingVaultUpdated(_stakingVault);
     }
 
     function setPlatformTreasury(address _platformTreasury) external onlyOwner {
+        require(_platformTreasury != address(0), "Invalid treasury");
         platformTreasury = _platformTreasury;
+        emit PlatformTreasuryUpdated(_platformTreasury);
     }
 
     /**
-     * @dev 每日結算：分紅邏輯改為動態比例
+     * @dev 每日結算：依目前比例將遊戲盈餘分配給收益寶與平台國庫。
      */
     function distributeBatchProfit(uint256 _totalProfit) external onlyOwner nonReentrant {
+        require(_totalProfit > 0, "Profit must be > 0");
         require(stakingVault != address(0), "Staking vault not set");
         require(usdt.balanceOf(address(this)) >= _totalProfit, "Insufficient balance");
 
         uint256 rewardAmount = (_totalProfit * rewardPercent) / 100;
         uint256 platformAmount = _totalProfit - rewardAmount;
 
-        // 轉給收益寶
-        require(usdt.transfer(stakingVault, rewardAmount), "Transfer failed");
+        usdt.safeTransfer(stakingVault, rewardAmount);
         IStakingVault(stakingVault).notifyRewardAmount(rewardAmount);
-        
-        // 轉給平台國庫
-        require(usdt.transfer(platformTreasury, platformAmount), "Transfer failed");
+
+        usdt.safeTransfer(platformTreasury, platformAmount);
 
         emit ProfitDistributed(_totalProfit, rewardAmount, platformAmount);
     }
 
-    // 緊急提取
     function emergencyWithdraw(address _token, uint256 _amount) external onlyOwner {
-        IERC20(_token).transfer(owner(), _amount);
+        IERC20(_token).safeTransfer(owner(), _amount);
     }
 }

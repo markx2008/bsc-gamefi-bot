@@ -4,17 +4,18 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("POSTGRES_URI")
+  url      = env("DATABASE_URL")
 }
 
 model User {
-  id             Int           @id @default(autoincrement())
-  tgId           String        @unique
-  walletAddress  String        @unique
-  balanceUsdt    Decimal       @default(0) @db.Decimal(36, 18)
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  id             Int                 @id @default(autoincrement())
+  tgId           String              @unique
+  walletAddress  String?             @unique
+  balanceUsdt    Decimal             @default(0) @db.Decimal(36, 18)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
   transactions   Transaction[]
+  withdrawals    WithdrawalRequest[]
 }
 
 model Transaction {
@@ -25,7 +26,39 @@ model Transaction {
   amount      Decimal           @db.Decimal(36, 18)
   txHash      String?           @unique
   status      TransactionStatus @default(PENDING)
+  blockNumber BigInt?
   createdAt   DateTime          @default(now())
+}
+
+model PendingDeposit {
+  id            Int                  @id @default(autoincrement())
+  walletAddress String
+  amount        Decimal              @db.Decimal(36, 18)
+  txHash        String               @unique
+  blockNumber   BigInt?
+  status        PendingDepositStatus @default(PENDING)
+  createdAt     DateTime             @default(now())
+  resolvedAt    DateTime?
+}
+
+model ChainCheckpoint {
+  id          String   @id
+  blockNumber BigInt
+  updatedAt   DateTime @updatedAt
+}
+
+model WithdrawalRequest {
+  id            Int              @id @default(autoincrement())
+  userId        Int
+  user          User             @relation(fields: [userId], references: [id])
+  amount        Decimal          @db.Decimal(36, 18)
+  walletAddress String
+  status        WithdrawalStatus @default(PENDING)
+  txHash        String?          @unique
+  reviewedBy    String?
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 enum TransactionType {
@@ -41,4 +74,17 @@ enum TransactionStatus {
   SUCCESS
   FAILED
   REJECTED
+}
+
+enum PendingDepositStatus {
+  PENDING
+  RESOLVED
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT
+  FAILED
 }

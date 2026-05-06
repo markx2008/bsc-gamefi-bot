@@ -2,16 +2,20 @@
 pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /**
  * @title StakingVault
  * @dev 處理 USDT 鎖倉 7 天，並接收來自 VaultManager 的獎金分紅。
  */
 contract StakingVault is Ownable, ReentrancyGuard {
-    IERC20 public usdt;
-    
+    using SafeERC20 for IERC20;
+
+    IERC20 public immutable usdt;
+    address public vaultManager;
+
     struct Stake {
         uint256 amount;
         uint256 startTime;
@@ -20,18 +24,24 @@ contract StakingVault is Ownable, ReentrancyGuard {
 
     uint256 public constant LOCK_PERIOD = 7 days;
     uint256 public totalStaked;
-    
-    mapping(address => Stake) public stakes;
-    
-    // 總獎金池（來自遊戲獲利）
     uint256 public totalRewardPool;
+
+    mapping(address => Stake) public stakes;
 
     event Staked(address indexed user, uint256 amount);
     event Withdrawn(address indexed user, uint256 amount, uint256 reward);
     event RewardAdded(uint256 amount);
+    event VaultManagerUpdated(address indexed vaultManager);
 
     constructor(address _usdt) Ownable(msg.sender) {
+        require(_usdt != address(0), "Invalid USDT");
         usdt = IERC20(_usdt);
+    }
+
+    function setVaultManager(address _vaultManager) external onlyOwner {
+        require(_vaultManager != address(0), "Invalid vault manager");
+        vaultManager = _vaultManager;
+        emit VaultManagerUpdated(_vaultManager);
     }
 
     /**
@@ -39,15 +49,9 @@ contract StakingVault is Ownable, ReentrancyGuard {
      */
     function stake(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
-        require(usdt.transferFrom(msg.sender, address(this), _amount), "Transfer failed");
+        usdt.safeTransferFrom(msg.sender, address(this), _amount);
 
         Stake storage userStake = stakes[msg.sender];
-        
-        // 如果原本就有質押，先結算舊的（這裡簡單處理，實際可做更複雜的複利）
-        if (userStake.amount > 0) {
-            // 此處可擴充獎金領取邏輯
-        }
-
         userStake.amount += _amount;
         userStake.startTime = block.timestamp;
         totalStaked += _amount;
@@ -59,7 +63,8 @@ contract StakingVault is Ownable, ReentrancyGuard {
      * @dev 接收來自 VaultManager 的獎金
      */
     function notifyRewardAmount(uint256 _amount) external {
-        // 這裡應該限制只有 VaultManager 能調用，或直接接收轉帳
+        require(msg.sender == vaultManager, "Only vault manager");
+        require(_amount > 0, "Amount must be > 0");
         totalRewardPool += _amount;
         emit RewardAdded(_amount);
     }
@@ -73,20 +78,16 @@ contract StakingVault is Ownable, ReentrancyGuard {
         require(block.timestamp >= userStake.startTime + LOCK_PERIOD, "Lock period not over");
 
         uint256 amountToWithdraw = userStake.amount;
-        
-        // 計算該用戶應得獎金比例（簡單模型：按總質押佔比）
         uint256 reward = 0;
         if (totalStaked > 0) {
             reward = (totalRewardPool * amountToWithdraw) / totalStaked;
         }
 
-        // 更新狀態
         totalStaked -= amountToWithdraw;
         totalRewardPool -= reward;
         delete stakes[msg.sender];
 
-        // 轉帳給用戶
-        require(usdt.transfer(msg.sender, amountToWithdraw + reward), "Withdrawal transfer failed");
+        usdt.safeTransfer(msg.sender, amountToWithdraw + reward);
 
         emit Withdrawn(msg.sender, amountToWithdraw, reward);
     }
