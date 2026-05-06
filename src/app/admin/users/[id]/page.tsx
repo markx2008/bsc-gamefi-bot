@@ -54,7 +54,7 @@ export default function UserAuditPage({ params }: { params: { id: string } }) {
           title="遊戲總盈虧" 
           value={`+ $${userSummary.gameProfit}`} 
           color="text-green-400" 
-          extra={userSummary.gameProfit > userSummary.totalDeposit ? <ShieldAlert size={16} className="text-red-500" title="高獲利警告" /> : null}
+          extra={userSummary.gameProfit > userSummary.totalDeposit ? <ShieldAlert size={16} className="text-red-500" /> : null}
         />
         <SummaryCard title="已提現 (Out)" value={`$${userSummary.totalWithdraw}`} color="text-slate-400" />
         <SummaryCard title="當前總結餘" value={`$${userSummary.netBalance}`} color="text-blue-400" />
