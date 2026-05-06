@@ -24,9 +24,12 @@ contract VaultManager is Ownable, ReentrancyGuard {
 
     uint256 public rewardPercent = 90;
     uint256 public platformPercent = 10;
+    uint256 public reservedLiabilities;
+    uint256 public undistributedProfit;
 
     event Deposit(address indexed user, uint256 amount, uint256 timestamp);
     event Withdrawal(address indexed user, uint256 amount, uint256 timestamp);
+    event GameProfitReceived(address indexed source, uint256 amount);
     event ProfitDistributed(uint256 totalAmount, uint256 rewardAmount, uint256 platformAmount);
     event RatiosUpdated(uint256 newRewardPercent, uint256 newPlatformPercent);
     event StakingVaultUpdated(address indexed stakingVault);
@@ -44,8 +47,19 @@ contract VaultManager is Ownable, ReentrancyGuard {
      */
     function deposit(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
+        reservedLiabilities += _amount;
         usdt.safeTransferFrom(msg.sender, address(this), _amount);
         emit Deposit(msg.sender, _amount, block.timestamp);
+    }
+
+    /**
+     * @dev 遊戲合約或後端熱錢包將已結算遊戲利潤轉入可分配 bucket。
+     */
+    function receiveGameProfit(uint256 _amount) external nonReentrant {
+        require(_amount > 0, "Amount must be > 0");
+        undistributedProfit += _amount;
+        usdt.safeTransferFrom(msg.sender, address(this), _amount);
+        emit GameProfitReceived(msg.sender, _amount);
     }
 
     /**
@@ -54,6 +68,8 @@ contract VaultManager is Ownable, ReentrancyGuard {
     function executeWithdrawal(address _user, uint256 _amount) external onlyOwner nonReentrant {
         require(_user != address(0), "Invalid user");
         require(_amount > 0, "Amount must be > 0");
+        require(reservedLiabilities >= _amount, "Insufficient liabilities");
+        reservedLiabilities -= _amount;
         usdt.safeTransfer(_user, _amount);
         emit Withdrawal(_user, _amount, block.timestamp);
     }
@@ -81,12 +97,14 @@ contract VaultManager is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 每日結算：依目前比例將遊戲盈餘分配給收益寶與平台國庫。
+     * @dev 每日結算：只允許分配已記錄的遊戲利潤，避免誤分用戶本金。
      */
     function distributeBatchProfit(uint256 _totalProfit) external onlyOwner nonReentrant {
         require(_totalProfit > 0, "Profit must be > 0");
         require(stakingVault != address(0), "Staking vault not set");
-        require(usdt.balanceOf(address(this)) >= _totalProfit, "Insufficient balance");
+        require(undistributedProfit >= _totalProfit, "Insufficient profit");
+
+        undistributedProfit -= _totalProfit;
 
         uint256 rewardAmount = (_totalProfit * rewardPercent) / 100;
         uint256 platformAmount = _totalProfit - rewardAmount;

@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       update: {},
     });
 
-    const token = signSessionToken({ tgId: user.tgId, iat: Math.floor(Date.now() / 1000) }, process.env.JWT_SECRET || "");
+    const token = signSessionToken({ tgId: user.tgId }, process.env.JWT_SECRET || "");
 
     return NextResponse.json({
       token,

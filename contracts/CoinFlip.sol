@@ -103,7 +103,7 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
             
             // 轉交給 VaultManager
             (bool success, ) = vaultManager.call(
-                abi.encodeWithSignature("distributeBatchProfit(uint256)", request.betAmount)
+                abi.encodeWithSignature("receiveGameProfit(uint256)", request.betAmount)
             );
             require(success, "Distribution to vault failed");
         }

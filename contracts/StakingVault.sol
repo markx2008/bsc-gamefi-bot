@@ -13,18 +13,23 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 contract StakingVault is Ownable, ReentrancyGuard {
     using SafeERC20 for IERC20;
 
+    uint256 private constant REWARD_PRECISION = 1e18;
+
     IERC20 public immutable usdt;
     address public vaultManager;
 
     struct Stake {
         uint256 amount;
         uint256 startTime;
-        uint256 lastRewardWithdrawTime;
+        uint256 rewardDebt;
+        uint256 accruedReward;
     }
 
     uint256 public constant LOCK_PERIOD = 7 days;
     uint256 public totalStaked;
     uint256 public totalRewardPool;
+    uint256 public accRewardPerShare;
+    uint256 public queuedRewards;
 
     mapping(address => Stake) public stakes;
 
@@ -49,11 +54,13 @@ contract StakingVault is Ownable, ReentrancyGuard {
      */
     function stake(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
+        _updateReward(msg.sender);
         usdt.safeTransferFrom(msg.sender, address(this), _amount);
 
         Stake storage userStake = stakes[msg.sender];
-        userStake.amount += _amount;
         userStake.startTime = block.timestamp;
+        userStake.amount += _amount;
+        userStake.rewardDebt = (userStake.amount * accRewardPerShare) / REWARD_PRECISION;
         totalStaked += _amount;
 
         emit Staked(msg.sender, _amount);
@@ -66,6 +73,15 @@ contract StakingVault is Ownable, ReentrancyGuard {
         require(msg.sender == vaultManager, "Only vault manager");
         require(_amount > 0, "Amount must be > 0");
         totalRewardPool += _amount;
+
+        if (totalStaked == 0) {
+            queuedRewards += _amount;
+        } else {
+            uint256 distributableReward = _amount + queuedRewards;
+            queuedRewards = 0;
+            accRewardPerShare += (distributableReward * REWARD_PRECISION) / totalStaked;
+        }
+
         emit RewardAdded(_amount);
     }
 
@@ -77,14 +93,15 @@ contract StakingVault is Ownable, ReentrancyGuard {
         require(userStake.amount > 0, "No stake found");
         require(block.timestamp >= userStake.startTime + LOCK_PERIOD, "Lock period not over");
 
+        _updateReward(msg.sender);
+
         uint256 amountToWithdraw = userStake.amount;
-        uint256 reward = 0;
-        if (totalStaked > 0) {
-            reward = (totalRewardPool * amountToWithdraw) / totalStaked;
-        }
+        uint256 reward = userStake.accruedReward;
 
         totalStaked -= amountToWithdraw;
-        totalRewardPool -= reward;
+        if (reward > 0) {
+            totalRewardPool -= reward;
+        }
         delete stakes[msg.sender];
 
         usdt.safeTransfer(msg.sender, amountToWithdraw + reward);
@@ -95,9 +112,17 @@ contract StakingVault is Ownable, ReentrancyGuard {
     /**
      * @dev 查詢當前預計可得獎金
      */
-    function pendingReward(address _user) external view returns (uint256) {
+    function pendingReward(address _user) public view returns (uint256) {
         Stake storage userStake = stakes[_user];
-        if (totalStaked == 0) return 0;
-        return (totalRewardPool * userStake.amount) / totalStaked;
+        if (userStake.amount == 0) return 0;
+        uint256 accumulatedReward = (userStake.amount * accRewardPerShare) / REWARD_PRECISION;
+        return userStake.accruedReward + accumulatedReward - userStake.rewardDebt;
+    }
+
+    function _updateReward(address _user) private {
+        Stake storage userStake = stakes[_user];
+        if (userStake.amount == 0) return;
+        userStake.accruedReward = pendingReward(_user);
+        userStake.rewardDebt = (userStake.amount * accRewardPerShare) / REWARD_PRECISION;
     }
 }

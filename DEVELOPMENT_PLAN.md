@@ -22,9 +22,9 @@
 ## 3. 分階段開發計畫
 
 ### 第一階段：資金基礎設施 (Phase 1: Financial Infrastructure)
-- [ ] 撰寫 `Vault.sol` 合約 (USDT 儲值、提現、90/10 分紅接口)。
-- [ ] 實作後端監聽器 (Listener)，自動將鏈上儲值同步到資料庫餘額。
-- [ ] 整合 Telegram OAuth 與錢包綁定帳號系統。
+- [x] 撰寫 `Vault.sol` 合約 (USDT 儲值、提現、90/10 分紅接口)。
+- [x] 實作後端監聽器 (Listener)，自動將鏈上儲值同步到資料庫餘額。
+- [x] 整合 Telegram OAuth 與錢包綁定帳號系統。
 
 ### 第二階段：極簡遊戲模組 (Phase 2: Minimalist Games)
 - [ ] 實作「公平性驗證演算法」。

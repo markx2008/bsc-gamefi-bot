@@ -1,8 +1,8 @@
 import { PrismaClient } from "@prisma/client";
 import { NextResponse } from "next/server";
 import {
-  normalizeWalletAddress,
-  verifySessionToken,
+  assertWalletAddress,
+  getBearerSession,
   verifyWalletBindingSignature,
 } from "@/lib/auth";
 
@@ -10,22 +10,19 @@ const prisma = new PrismaClient();
 
 export async function POST(request: Request) {
   try {
-    const authorization = request.headers.get("authorization") || "";
-    const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
-    const session = verifySessionToken(token, process.env.JWT_SECRET || "");
-    const { walletAddress, signature, message } = await request.json();
+    const session = getBearerSession(request);
+    const { walletAddress, signature } = await request.json();
 
     if (!walletAddress || !signature) {
       return NextResponse.json({ error: "walletAddress and signature are required" }, { status: 400 });
     }
 
-    const normalizedWallet = normalizeWalletAddress(walletAddress) as `0x${string}`;
+    const normalizedWallet = assertWalletAddress(walletAddress);
     const signatureHex = signature as `0x${string}`;
     const isValid = await verifyWalletBindingSignature({
       tgId: session.tgId,
       walletAddress: normalizedWallet,
       signature: signatureHex,
-      message,
     });
 
     if (!isValid) {

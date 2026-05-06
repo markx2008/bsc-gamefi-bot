@@ -1,5 +1,5 @@
 import crypto from "crypto";
-import { verifyMessage } from "viem";
+import { isAddress, verifyMessage } from "viem";
 
 export type TelegramAuthPayload = {
   id: string;
@@ -12,6 +12,7 @@ export type TelegramAuthPayload = {
 export type SessionPayload = {
   tgId: string;
   iat: number;
+  exp: number;
 };
 
 function base64url(input: Buffer | string) {
@@ -24,6 +25,11 @@ function hmacSha256(key: crypto.BinaryLike | crypto.KeyObject, value: string) {
 
 export function normalizeWalletAddress(walletAddress: string) {
   return walletAddress.toLowerCase();
+}
+
+export function assertWalletAddress(walletAddress: string): `0x${string}` {
+  if (!isAddress(walletAddress)) throw new Error("Invalid wallet address");
+  return normalizeWalletAddress(walletAddress) as `0x${string}`;
 }
 
 export function buildWalletBindingMessage(tgId: string, walletAddress: string) {
@@ -79,10 +85,16 @@ export function verifyTelegramInitData(initData: string, botToken: string, maxAg
   };
 }
 
-export function signSessionToken(payload: SessionPayload, secret: string) {
+export function signSessionToken(payload: { tgId: string }, secret: string, ttlSeconds = 86400) {
   if (!secret) throw new Error("JWT_SECRET is required");
+  const now = Math.floor(Date.now() / 1000);
+  const sessionPayload: SessionPayload = {
+    tgId: payload.tgId,
+    iat: now,
+    exp: now + ttlSeconds,
+  };
   const header = base64url(JSON.stringify({ alg: "HS256", typ: "JWT" }));
-  const body = base64url(JSON.stringify(payload));
+  const body = base64url(JSON.stringify(sessionPayload));
   const signature = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
   return `${header}.${body}.${signature}`;
 }
@@ -93,23 +105,38 @@ export function verifySessionToken(token: string, secret: string): SessionPayloa
   if (!header || !body || !signature) throw new Error("Invalid session token");
 
   const expected = crypto.createHmac("sha256", secret).update(`${header}.${body}`).digest("base64url");
-  if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+  const actual = Buffer.from(signature);
+  const expectedBuffer = Buffer.from(expected);
+  if (actual.length !== expectedBuffer.length || !crypto.timingSafeEqual(actual, expectedBuffer)) {
     throw new Error("Invalid session signature");
   }
 
-  return JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
+  const payload = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as SessionPayload;
+  if (!payload.exp || Math.floor(Date.now() / 1000) > payload.exp) {
+    throw new Error("Session expired");
+  }
+  return payload;
+}
+
+export function getBearerSession(request: Request) {
+  const authorization = request.headers.get("authorization") || "";
+  const token = authorization.startsWith("Bearer ") ? authorization.slice("Bearer ".length) : "";
+  return verifySessionToken(token, process.env.JWT_SECRET || "");
+}
+
+export function assertAdminSession(session: SessionPayload) {
+  if (!process.env.ADMIN_TG_ID) throw new Error("ADMIN_TG_ID is required");
+  if (session.tgId !== process.env.ADMIN_TG_ID) throw new Error("Admin privileges required");
 }
 
 export async function verifyWalletBindingSignature(params: {
   tgId: string;
   walletAddress: `0x${string}`;
   signature: `0x${string}`;
-  message?: string;
 }) {
-  const message = params.message || buildWalletBindingMessage(params.tgId, params.walletAddress);
   return verifyMessage({
     address: params.walletAddress,
-    message,
+    message: buildWalletBindingMessage(params.tgId, params.walletAddress),
     signature: params.signature,
   });
 }
