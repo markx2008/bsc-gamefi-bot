@@ -35,3 +35,7 @@ assert.match(packageJson.scripts.start, /^npm run db:init && /, 'web start must 
 assert.match(packageJson.scripts.server, /^npm run db:init && /, 'listener server must initialize DB before listening');
 assert.ok(packageJson.dependencies.prisma, 'Prisma CLI must be available at runtime for db:init');
 assert.match(initDbSource, /prisma db push/, 'init-db script must run prisma db push');
+assert.match(initDbSource, /INIT_DB_MAX_ATTEMPTS/, 'init-db script must allow configurable retry attempts');
+assert.match(initDbSource, /INIT_DB_RETRY_DELAY_MS/, 'init-db script must allow configurable retry delay');
+assert.match(initDbSource, /P1001|Can't reach database server/, 'init-db script must retry transient database connectivity errors');
+assert.match(initDbSource, /while \(attempt <= maxAttempts\)/, 'init-db script must retry db push before failing');
