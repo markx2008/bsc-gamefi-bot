@@ -32,7 +32,7 @@ assert.match(listener, /ensureDatabaseUrl\(\);\nconst VAULT_ADDRESS/, 'listener 
 
 assert.equal(packageJson.scripts['db:init'], 'node scripts/init-db.mjs', 'db:init script must initialize Prisma schema');
 assert.match(packageJson.scripts.start, /^npm run db:init && /, 'web start must initialize DB before Next starts');
-assert.match(packageJson.scripts.server, /^npm run db:init && /, 'listener server must initialize DB before listening');
+assert.equal(packageJson.scripts.server, 'node scripts/start-listener.mjs', 'listener server must use startup wrapper that initializes DB before launching listener');
 assert.ok(packageJson.dependencies.prisma, 'Prisma CLI must be available at runtime for db:init');
 assert.match(initDbSource, /prisma db push/, 'init-db script must run prisma db push');
 assert.match(initDbSource, /INIT_DB_MAX_ATTEMPTS/, 'init-db script must allow configurable retry attempts');

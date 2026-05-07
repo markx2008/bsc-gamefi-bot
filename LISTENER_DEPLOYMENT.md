@@ -14,6 +14,8 @@ The app now accepts Zeabur-generated Postgres variables. You can provide either 
 
 ## Zeabur Service Command
 
+The listener startup wrapper opens a lightweight health server on `PORT` (default `3000`) before running DB initialization. This prevents Web-style Zeabur services from being terminated before `prisma db push` finishes.
+
 Use the package script:
 
 ```bash

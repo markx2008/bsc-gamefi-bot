@@ -7,7 +7,7 @@
     "dev": "next dev",
     "build": "prisma generate && next build && npm run build:server",
     "start": "npm run db:init && next start -H 0.0.0.0 -p 3000",
-    "server": "npm run db:init && node dist/server/src/services/listener.js",
+    "server": "node scripts/start-listener.mjs",
     "prisma:generate": "prisma generate",
     "compile:contracts": "hardhat compile",
     "test:contracts": "hardhat test",
@@ -17,7 +17,8 @@
     "test:server-config": "node scripts/verify-server-runtime.mjs",
     "test:listener-env": "node scripts/verify-listener-env-preflight.mjs",
     "db:init": "node scripts/init-db.mjs",
-    "test:database-env": "node scripts/verify-database-env-config.mjs"
+    "test:database-env": "node scripts/verify-database-env-config.mjs",
+    "test:listener-startup": "node scripts/verify-listener-startup.mjs"
   },
   "keywords": [],
   "author": "",
