@@ -26,6 +26,12 @@
 - [x] 實作後端監聽器 (Listener)，自動將鏈上儲值同步到資料庫餘額。
 - [x] 整合 Telegram OAuth 與錢包綁定帳號系統。
 
+### 第 1.5 階段：真實資料串接與營運穩定 (Phase 1.5: Live Data & Ops Hardening)
+- [ ] 將 Admin Dashboard 財務指標改接資料庫與鏈上合約讀取，移除硬編模擬數據。
+- [ ] 將提現審核列表與用戶審核頁串接 `WithdrawalRequest`、`User`、`Transaction` 真實資料。
+- [ ] 將 listener production 啟動改為編譯後 JavaScript，降低 Zeabur runtime 記憶體用量。
+- [ ] 補齊 Zeabur listener 環境變數檢查文件：`VAULT_ADDRESS`、`RPC_URL`、`DATABASE_URL`、`USDT_DECIMALS`、`LISTENER_START_BLOCK`。
+
 ### 第二階段：極簡遊戲模組 (Phase 2: Minimalist Games)
 - [ ] 實作「公平性驗證演算法」。
 - [ ] 開發三款核心遊戲：

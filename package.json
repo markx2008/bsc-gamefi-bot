@@ -5,13 +5,16 @@
   "main": "index.js",
   "scripts": {
     "dev": "next dev",
-    "build": "prisma generate && next build",
+    "build": "prisma generate && next build && npm run build:server",
     "start": "next start -H 0.0.0.0 -p 3000",
-    "server": "ts-node server/src/services/listener.ts",
+    "server": "node dist/server/src/services/listener.js",
     "prisma:generate": "prisma generate",
     "compile:contracts": "hardhat compile",
     "test:contracts": "hardhat test",
-    "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet"
+    "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet",
+    "server:dev": "ts-node server/src/services/listener.ts",
+    "build:server": "tsc -p server/tsconfig.json",
+    "test:server-config": "node scripts/verify-server-runtime.mjs"
   },
   "keywords": [],
   "author": "",
