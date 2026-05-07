@@ -1,14 +1,12 @@
-import { PrismaClient } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import {
   assertWalletAddress,
   getBearerSession,
   verifyWalletBindingSignature,
 } from "@/lib/auth";
-
-const prisma = new PrismaClient();
-
 export async function POST(request: Request) {
+  const prisma = getPrisma();
   try {
     const session = getBearerSession(request);
     const { walletAddress, signature } = await request.json();

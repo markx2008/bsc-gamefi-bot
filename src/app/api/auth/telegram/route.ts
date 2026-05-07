@@ -1,10 +1,8 @@
-import { PrismaClient } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { signSessionToken, verifyTelegramInitData } from "@/lib/auth";
-
-const prisma = new PrismaClient();
-
 export async function POST(request: Request) {
+  const prisma = getPrisma();
   try {
     const { initData } = await request.json();
     if (!initData || typeof initData !== "string") {

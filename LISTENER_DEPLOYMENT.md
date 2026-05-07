@@ -4,7 +4,8 @@ The deposit listener is a long-running worker service. In production it should r
 
 ## Required Environment Variables
 
-- `DATABASE_URL`: PostgreSQL connection string used by Prisma.
+The app now accepts Zeabur-generated Postgres variables. You can provide either `DATABASE_URL`, `POSTGRES_CONNECTION_STRING`, or the split `POSTGRES_HOST` / `POSTGRES_PORT` / `POSTGRES_DATABASE` / `POSTGRES_USERNAME` / `POSTGRES_PASSWORD` variables. At startup, the app normalizes these into `DATABASE_URL` for Prisma.
+
 - `VAULT_ADDRESS`: deployed `VaultManager` contract address to watch for `Deposit` events.
 - `RPC_URL`: BSC RPC endpoint. If omitted, the listener uses the BSC testnet public RPC fallback.
 - `USDT_DECIMALS`: token decimals. Defaults to `18`.
@@ -19,7 +20,7 @@ Use the package script:
 npm run server
 ```
 
-The Docker build runs `npm run build`, which now also compiles the listener into `dist/server/src/services/listener.js`. The `server` script runs that compiled file with `node`.
+The Docker build runs `npm run build`, which now also compiles the listener into `dist/server/src/services/listener.js`. The `server` script first runs `npm run db:init` to apply the Prisma schema with `prisma db push --skip-generate`, then runs the compiled listener with `node`.
 
 For local development only, use:
 

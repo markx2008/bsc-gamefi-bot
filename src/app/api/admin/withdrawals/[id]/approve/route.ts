@@ -1,11 +1,11 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { createWalletClient, http, parseAbi, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { assertAdminSession, getBearerSession } from "@/lib/auth";
 
-const prisma = new PrismaClient();
 const VAULT_ABI = parseAbi(["function executeWithdrawal(address user, uint256 amount) external"]);
 
 type RouteContext = {
@@ -43,6 +43,7 @@ async function executeOnChainWithdrawal(walletAddress: `0x${string}`, amount: st
 }
 
 export async function POST(request: Request, context: RouteContext) {
+  const prisma = getPrisma();
   let approvedWithdrawal: ApprovedWithdrawal | null = null;
 
   try {

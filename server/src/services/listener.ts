@@ -2,6 +2,7 @@ import { createPublicClient, formatUnits, http, parseAbiItem } from 'viem';
 import { bscTestnet } from 'viem/chains';
 import { PrismaClient } from '@prisma/client';
 import * as dotenv from 'dotenv';
+import { ensureDatabaseUrl } from '../../../src/lib/databaseUrl';
 
 dotenv.config();
 
@@ -13,7 +14,7 @@ function requireEnv(name: string) {
   return value;
 }
 
-const DATABASE_URL = requireEnv('DATABASE_URL');
+ensureDatabaseUrl();
 const VAULT_ADDRESS = requireEnv('VAULT_ADDRESS') as `0x${string}`;
 const prisma = new PrismaClient();
 const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';

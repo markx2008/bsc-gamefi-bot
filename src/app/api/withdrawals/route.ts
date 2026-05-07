@@ -1,9 +1,7 @@
-import { Prisma, PrismaClient } from "@prisma/client";
+import { Prisma } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { getBearerSession } from "@/lib/auth";
-
-const prisma = new PrismaClient();
-
 function parsePositiveDecimal(value: unknown) {
   const amount = new Prisma.Decimal(String(value || "0"));
   if (amount.lte(0)) throw new Error("Amount must be > 0");
@@ -11,6 +9,7 @@ function parsePositiveDecimal(value: unknown) {
 }
 
 export async function POST(request: Request) {
+  const prisma = getPrisma();
   try {
     const session = getBearerSession(request);
     const { amount } = await request.json();

@@ -1,14 +1,12 @@
-import { PrismaClient } from "@prisma/client";
+import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 import { assertAdminSession, getBearerSession } from "@/lib/auth";
-
-const prisma = new PrismaClient();
-
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
 export async function POST(request: Request, context: RouteContext) {
+  const prisma = getPrisma();
   try {
     const session = getBearerSession(request);
     assertAdminSession(session);

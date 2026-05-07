@@ -5,10 +5,10 @@ const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import
 const dockerfile = fs.readFileSync(new URL('../Dockerfile', import.meta.url), 'utf8');
 const serverTsConfigPath = new URL('../server/tsconfig.json', import.meta.url);
 
-assert.equal(
+assert.match(
   packageJson.scripts.server,
-  'node dist/server/src/services/listener.js',
-  'production server script must run compiled JavaScript with node',
+  /^npm run db:init && node dist\/server\/src\/services\/listener\.js$/,
+  'production server script must initialize DB and run compiled JavaScript with node',
 );
 assert.equal(
   packageJson.scripts['server:dev'],
