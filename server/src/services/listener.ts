@@ -5,8 +5,17 @@ import * as dotenv from 'dotenv';
 
 dotenv.config();
 
+function requireEnv(name: string) {
+  const value = process.env[name];
+  if (!value) {
+    throw new Error(`${name} is required. Set ${name} in Zeabur service environment variables.`);
+  }
+  return value;
+}
+
+const DATABASE_URL = requireEnv('DATABASE_URL');
+const VAULT_ADDRESS = requireEnv('VAULT_ADDRESS') as `0x${string}`;
 const prisma = new PrismaClient();
-const VAULT_ADDRESS = process.env.VAULT_ADDRESS as `0x${string}` | undefined;
 const RPC_URL = process.env.RPC_URL || 'https://data-seed-prebsc-1-s1.binance.org:8545';
 const TOKEN_DECIMALS = Number(process.env.USDT_DECIMALS || 18);
 const CHECKPOINT_ID = 'vault-deposit-listener';
@@ -54,10 +63,6 @@ async function saveLastProcessedBlock(blockNumber: bigint) {
  * @dev 啟動儲值監聽器，先補掃遺漏區塊再監聽新事件。
  */
 async function watchDeposits() {
-  if (!VAULT_ADDRESS) {
-    throw new Error('VAULT_ADDRESS is required');
-  }
-
   console.log(`🚀 [LISTENER] 啟動成功，監控合約: ${VAULT_ADDRESS}`);
   await backfillDeposits();
 

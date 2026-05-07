@@ -14,7 +14,8 @@
     "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet",
     "server:dev": "ts-node server/src/services/listener.ts",
     "build:server": "tsc -p server/tsconfig.json",
-    "test:server-config": "node scripts/verify-server-runtime.mjs"
+    "test:server-config": "node scripts/verify-server-runtime.mjs",
+    "test:listener-env": "node scripts/verify-listener-env-preflight.mjs"
   },
   "keywords": [],
   "author": "",
