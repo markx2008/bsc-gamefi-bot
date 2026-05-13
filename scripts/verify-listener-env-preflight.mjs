@@ -1,7 +1,9 @@
 import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
-const listener = fs.readFileSync(new URL('../server/src/services/listener.ts', import.meta.url), 'utf8');
+const listener = fs
+  .readFileSync(new URL('../server/src/services/listener.ts', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
 const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
 
 assert.match(

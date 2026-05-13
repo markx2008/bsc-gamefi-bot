@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
-import { createWalletClient, http, parseAbi, parseUnits } from "viem";
+import { createPublicClient, createWalletClient, http, parseAbi, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { bscTestnet } from "viem/chains";
 import { assertAdminSession, getBearerSession } from "@/lib/auth";
@@ -18,6 +18,7 @@ type ApprovedWithdrawal = {
   transactionId: number;
   amount: Prisma.Decimal;
   walletAddress: string;
+  txHash?: `0x${string}`;
 };
 
 async function executeOnChainWithdrawal(walletAddress: `0x${string}`, amount: string) {
@@ -42,6 +43,15 @@ async function executeOnChainWithdrawal(walletAddress: `0x${string}`, amount: st
   });
 }
 
+async function waitForOnChainWithdrawal(txHash: `0x${string}`) {
+  const publicClient = createPublicClient({
+    chain: bscTestnet,
+    transport: http(process.env.RPC_URL),
+  });
+
+  return publicClient.waitForTransactionReceipt({ hash: txHash });
+}
+
 export async function POST(request: Request, context: RouteContext) {
   const prisma = getPrisma();
   let approvedWithdrawal: ApprovedWithdrawal | null = null;
@@ -54,48 +64,51 @@ export async function POST(request: Request, context: RouteContext) {
     if (!Number.isInteger(withdrawalId)) throw new Error("Invalid withdrawal id");
 
     approvedWithdrawal = await prisma.$transaction(async (tx) => {
-      const withdrawal = await tx.withdrawalRequest.findUnique({
+      const claimedWithdrawal = await tx.withdrawalRequest.findUnique({
         where: { id: withdrawalId },
-        include: { user: true },
       });
 
-      if (!withdrawal) throw new Error("Withdrawal not found");
-      if (withdrawal.status !== "PENDING") throw new Error("Withdrawal is not pending");
-      if (withdrawal.user.balanceUsdt.lt(withdrawal.amount)) throw new Error("Insufficient balance");
+      if (!claimedWithdrawal) throw new Error("Withdrawal not found");
+      if (claimedWithdrawal.status !== "PENDING") throw new Error("Withdrawal is not pending");
 
-      await tx.user.update({
-        where: { id: withdrawal.userId },
-        data: {
-          balanceUsdt: {
-            decrement: withdrawal.amount,
-          },
-        },
-      });
-
-      const transaction = await tx.transaction.create({
-        data: {
-          userId: withdrawal.userId,
-          type: "WITHDRAW",
-          amount: withdrawal.amount,
-          status: "PENDING",
-        },
-      });
-
-      const approved = await tx.withdrawalRequest.update({
-        where: { id: withdrawal.id },
+      const claim = await tx.withdrawalRequest.updateMany({
+        where: { id: withdrawalId, status: "PENDING" },
         data: {
           status: "APPROVED",
           reviewedBy: session.tgId,
           reviewedAt: new Date(),
         },
       });
+      if (claim.count !== 1) throw new Error("Withdrawal is not pending");
+
+      const debit = await tx.user.updateMany({
+        where: {
+          id: claimedWithdrawal.userId,
+          balanceUsdt: { gte: claimedWithdrawal.amount },
+        },
+        data: {
+          balanceUsdt: {
+            decrement: claimedWithdrawal.amount,
+          },
+        },
+      });
+      if (debit.count !== 1) throw new Error("Insufficient balance");
+
+      const transaction = await tx.transaction.create({
+        data: {
+          userId: claimedWithdrawal.userId,
+          type: "WITHDRAW",
+          amount: claimedWithdrawal.amount,
+          status: "PENDING",
+        },
+      });
 
       return {
-        id: approved.id,
-        userId: approved.userId,
+        id: claimedWithdrawal.id,
+        userId: claimedWithdrawal.userId,
         transactionId: transaction.id,
-        amount: approved.amount,
-        walletAddress: approved.walletAddress,
+        amount: claimedWithdrawal.amount,
+        walletAddress: claimedWithdrawal.walletAddress,
       };
     });
 
@@ -103,22 +116,84 @@ export async function POST(request: Request, context: RouteContext) {
       approvedWithdrawal.walletAddress as `0x${string}`,
       approvedWithdrawal.amount.toString(),
     );
+    approvedWithdrawal.txHash = txHash;
 
-    const sentWithdrawal = await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx) => {
       await tx.transaction.update({
         where: { id: approvedWithdrawal!.transactionId },
         data: {
           txHash,
-          status: "SUCCESS",
+          status: "PENDING",
         },
+      });
+
+      await tx.withdrawalRequest.update({
+        where: { id: approvedWithdrawal!.id },
+        data: {
+          txHash,
+        },
+      });
+    });
+
+    let receipt;
+    try {
+      receipt = await waitForOnChainWithdrawal(txHash);
+    } catch (error) {
+      return NextResponse.json(
+        {
+          error: error instanceof Error ? error.message : "Withdrawal broadcast but receipt is not confirmed",
+          withdrawal: {
+            id: approvedWithdrawal.id,
+            status: "APPROVED",
+            txHash,
+          },
+        },
+        { status: 202 },
+      );
+    }
+
+    if (receipt.status !== "success") {
+      await prisma.$transaction(async (tx) => {
+        await tx.user.update({
+          where: { id: approvedWithdrawal!.userId },
+          data: {
+            balanceUsdt: {
+              increment: approvedWithdrawal!.amount,
+            },
+          },
+        });
+        await tx.transaction.update({
+          where: { id: approvedWithdrawal!.transactionId },
+          data: { status: "FAILED" },
+        });
+        await tx.withdrawalRequest.update({
+          where: { id: approvedWithdrawal!.id },
+          data: { status: "FAILED" },
+        });
+      });
+
+      return NextResponse.json(
+        {
+          error: "On-chain withdrawal reverted",
+          withdrawal: {
+            id: approvedWithdrawal.id,
+            status: "FAILED",
+            txHash,
+          },
+        },
+        { status: 400 },
+      );
+    }
+
+    const sentWithdrawal = await prisma.$transaction(async (tx) => {
+      await tx.transaction.update({
+        where: { id: approvedWithdrawal!.transactionId },
+        data: { status: "SUCCESS" },
       });
 
       return tx.withdrawalRequest.update({
         where: { id: approvedWithdrawal!.id },
-        data: {
-          status: "SENT",
-          txHash,
-        },
+        data: { status: "SENT" },
       });
     });
 
@@ -130,7 +205,7 @@ export async function POST(request: Request, context: RouteContext) {
       },
     });
   } catch (error) {
-    if (approvedWithdrawal) {
+    if (approvedWithdrawal && !approvedWithdrawal.txHash) {
       await prisma.$transaction(async (tx) => {
         await tx.user.update({
           where: { id: approvedWithdrawal!.userId },
@@ -151,6 +226,12 @@ export async function POST(request: Request, context: RouteContext) {
       });
     }
 
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Withdrawal failed" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Withdrawal failed",
+        txHash: approvedWithdrawal?.txHash,
+      },
+      { status: approvedWithdrawal?.txHash ? 202 : 400 },
+    );
   }
 }

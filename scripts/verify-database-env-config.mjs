@@ -2,9 +2,15 @@ import fs from 'node:fs';
 import assert from 'node:assert/strict';
 
 const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
-const databaseUrlSource = fs.readFileSync(new URL('../src/lib/databaseUrl.ts', import.meta.url), 'utf8');
-const prismaSource = fs.readFileSync(new URL('../src/lib/prisma.ts', import.meta.url), 'utf8');
-const initDbSource = fs.readFileSync(new URL('../scripts/init-db.mjs', import.meta.url), 'utf8');
+const databaseUrlSource = fs
+  .readFileSync(new URL('../src/lib/databaseUrl.ts', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
+const prismaSource = fs
+  .readFileSync(new URL('../src/lib/prisma.ts', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
+const initDbSource = fs
+  .readFileSync(new URL('../scripts/init-db.mjs', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
 const apiFiles = [
   '../src/app/api/auth/telegram/route.ts',
   '../src/app/api/auth/bind-wallet/route.ts',
@@ -21,13 +27,15 @@ assert.match(databaseUrlSource, /process\.env\.DATABASE_URL = databaseUrl/, 'res
 assert.match(prismaSource, /ensureDatabaseUrl\(\);/, 'Prisma client helper must resolve DB env lazily at request runtime');
 
 for (const file of apiFiles) {
-  const source = fs.readFileSync(new URL(file, import.meta.url), 'utf8');
+  const source = fs.readFileSync(new URL(file, import.meta.url), 'utf8').replace(/\r\n/g, '\n');
   assert.match(source, /import \{ getPrisma \} from "@\/lib\/prisma";/, `${file} must use shared lazy Prisma helper`);
   assert.match(source, /const prisma = getPrisma\(\);/, `${file} must construct Prisma lazily inside handler`);
   assert.doesNotMatch(source, /ensureDatabaseUrl\(\);\n\nconst prisma = new PrismaClient\(\);/, `${file} must not resolve DB env at module evaluation time`);
 }
 
-const listener = fs.readFileSync(new URL('../server/src/services/listener.ts', import.meta.url), 'utf8');
+const listener = fs
+  .readFileSync(new URL('../server/src/services/listener.ts', import.meta.url), 'utf8')
+  .replace(/\r\n/g, '\n');
 assert.match(listener, /ensureDatabaseUrl\(\);\nconst VAULT_ADDRESS/, 'listener must resolve DB env before PrismaClient construction');
 
 assert.equal(packageJson.scripts['db:init'], 'node scripts/init-db.mjs', 'db:init script must initialize Prisma schema');

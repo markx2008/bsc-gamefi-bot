@@ -18,7 +18,9 @@
     "test:listener-env": "node scripts/verify-listener-env-preflight.mjs",
     "db:init": "node scripts/init-db.mjs",
     "test:database-env": "node scripts/verify-database-env-config.mjs",
-    "test:listener-startup": "node scripts/verify-listener-startup.mjs"
+    "test:listener-startup": "node scripts/verify-listener-startup.mjs",
+    "test:listener-checkpoint": "node scripts/verify-listener-checkpoint-safety.mjs",
+    "test:withdrawal-approval": "node scripts/verify-withdrawal-approval-safety.mjs"
   },
   "keywords": [],
   "author": "",
@@ -35,22 +37,24 @@
     "dotenv": "^17.4.2",
     "lucide-react": "^1.14.0",
     "next": "^16.2.4",
+    "prisma": "6.2.1",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",
     "socket.io-client": "^4.8.3",
     "tailwind-merge": "^3.5.0",
     "ts-node": "^10.9.2",
     "typescript": "^6.0.3",
-    "viem": "^2.48.8",
-    "prisma": "6.2.1"
+    "viem": "^2.48.8"
   },
   "devDependencies": {
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
-    "hardhat": "^2.22.19",
     "@chainlink/contracts": "^0.8.0",
+    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
     "@openzeppelin/contracts": "^5.0.2",
-    "tailwindcss": "^3.4.17",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.20",
+    "hardhat": "^2.22.19",
     "postcss": "^8.5.10",
-    "autoprefixer": "^10.4.20"
+    "tailwindcss": "^3.4.17"
   }
 }
