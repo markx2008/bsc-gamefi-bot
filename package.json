@@ -1,6 +1,7 @@
 {
   "name": "bsc-gamefi-bot",
   "version": "1.0.0",
+  "type": "module",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -11,7 +12,7 @@
     "prisma:generate": "prisma generate",
     "compile:contracts": "hardhat compile",
     "test:contracts": "hardhat test",
-    "deploy:testnet": "hardhat run scripts/deploy.js --network bscTestnet",
+    "deploy:testnet": "hardhat run scripts/deploy.mjs --network bscTestnet",
     "server:dev": "ts-node server/src/services/listener.ts",
     "build:server": "tsc -p server/tsconfig.json",
     "test:server-config": "node scripts/verify-server-runtime.mjs",
@@ -47,17 +48,21 @@
     "viem": "^2.48.8"
   },
   "devDependencies": {
-    "@chainlink/contracts": "^0.8.0",
-    "@nomicfoundation/hardhat-toolbox": "^5.0.0",
+    "@nomicfoundation/hardhat-ethers": "^4.0.11",
+    "@nomicfoundation/hardhat-ethers-chai-matchers": "^3.0.8",
+    "@nomicfoundation/hardhat-mocha": "^3.0.19",
     "@openzeppelin/contracts": "^5.0.2",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
-    "hardhat": "^2.22.19",
+    "hardhat": "^3.4.5",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.17"
   },
   "overrides": {
+    "diff": "^9.0.0",
+    "serialize-javascript": "^7.0.5",
+    "tmp": "^0.2.5",
     "postcss": "^8.5.10"
   }
 }

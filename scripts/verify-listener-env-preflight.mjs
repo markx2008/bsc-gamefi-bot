@@ -8,7 +8,7 @@ const packageJson = JSON.parse(fs.readFileSync(new URL('../package.json', import
 
 assert.match(
   listener,
-  /import \{ ensureDatabaseUrl \} from '..\/..\/..\/src\/lib\/databaseUrl';/,
+  /import \{ ensureDatabaseUrl \} from '..\/..\/..\/src\/lib\/databaseUrl\.js';/,
   'listener must use the shared database URL resolver',
 );
 assert.match(

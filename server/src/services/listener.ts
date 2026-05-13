@@ -2,7 +2,7 @@ import { createPublicClient, formatUnits, http, parseAbiItem } from 'viem';
 import { bscTestnet } from 'viem/chains';
 import { PrismaClient } from '@prisma/client';
 import * as dotenv from 'dotenv';
-import { ensureDatabaseUrl } from '../../../src/lib/databaseUrl';
+import { ensureDatabaseUrl } from '../../../src/lib/databaseUrl.js';
 
 dotenv.config();
 

@@ -1,9 +1,12 @@
-require("@nomicfoundation/hardhat-toolbox");
-require("dotenv").config();
+import hardhatEthers from "@nomicfoundation/hardhat-ethers";
+import hardhatEthersChaiMatchers from "@nomicfoundation/hardhat-ethers-chai-matchers";
+import hardhatMocha from "@nomicfoundation/hardhat-mocha";
+import "dotenv/config";
 
 const privateKey = process.env.ADMIN_PRIVATE_KEY || "";
 
-module.exports = {
+export default {
+  plugins: [hardhatEthers, hardhatEthersChaiMatchers, hardhatMocha],
   solidity: {
     version: "0.8.20",
     settings: {
@@ -15,6 +18,7 @@ module.exports = {
   },
   networks: {
     bscTestnet: {
+      type: "http",
       url: process.env.RPC_URL || "https://data-seed-prebsc-1-s1.binance.org:8545",
       chainId: 97,
       accounts: privateKey ? [privateKey] : [],

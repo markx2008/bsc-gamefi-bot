@@ -1,23 +1,24 @@
-const hre = require("hardhat");
+import { network } from "hardhat";
 
 async function main() {
-  const [deployer] = await hre.ethers.getSigners();
+  const { ethers } = await network.create();
+  const [deployer] = await ethers.getSigners();
   console.log("🚀 正在使用帳戶部署合約:", deployer.address);
 
-  const MockUSDT = await hre.ethers.getContractFactory("MockUSDT");
+  const MockUSDT = await ethers.getContractFactory("MockUSDT");
   const usdt = await MockUSDT.deploy();
   await usdt.waitForDeployment();
   const usdtAddress = await usdt.getAddress();
   console.log("💎 MockUSDT 部署於:", usdtAddress);
 
   const platformTreasury = process.env.PLATFORM_TREASURY || deployer.address;
-  const VaultManager = await hre.ethers.getContractFactory("VaultManager");
+  const VaultManager = await ethers.getContractFactory("VaultManager");
   const vault = await VaultManager.deploy(usdtAddress, platformTreasury);
   await vault.waitForDeployment();
   const vaultAddress = await vault.getAddress();
   console.log("🏦 VaultManager 部署於:", vaultAddress);
 
-  const StakingVault = await hre.ethers.getContractFactory("StakingVault");
+  const StakingVault = await ethers.getContractFactory("StakingVault");
   const staking = await StakingVault.deploy(usdtAddress);
   await staking.waitForDeployment();
   const stakingAddress = await staking.getAddress();

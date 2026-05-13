@@ -1,6 +1,8 @@
-const { expect } = require("chai");
-const { anyValue } = require("@nomicfoundation/hardhat-chai-matchers/withArgs");
-const { ethers } = require("hardhat");
+import { expect } from "chai";
+import { anyValue } from "@nomicfoundation/hardhat-ethers-chai-matchers/withArgs";
+import { network } from "hardhat";
+
+const { ethers } = await network.create();
 
 const WEEK = 7 * 24 * 60 * 60;
 
