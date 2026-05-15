@@ -7,6 +7,10 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 interface IStakingVault {
+    /**
+     * @dev 通知 StakingVault 有新的獎金可供質押者分配。
+     * @param _amount 新增的獎金金額。
+     */
     function notifyRewardAmount(uint256 _amount) external;
 }
 
@@ -35,6 +39,11 @@ contract VaultManager is Ownable, ReentrancyGuard {
     event StakingVaultUpdated(address indexed stakingVault);
     event PlatformTreasuryUpdated(address indexed platformTreasury);
 
+    /**
+     * @dev 初始化金庫管理合約，設定 USDT 與平台收款地址。
+     * @param _usdt 金庫使用的 USDT token 地址。
+     * @param _platformTreasury 平台收益收款地址。
+     */
     constructor(address _usdt, address _platformTreasury) Ownable(msg.sender) {
         require(_usdt != address(0), "Invalid USDT");
         require(_platformTreasury != address(0), "Invalid treasury");
@@ -44,6 +53,7 @@ contract VaultManager is Ownable, ReentrancyGuard {
 
     /**
      * @dev 用戶儲值 USDT 到全局金庫，後端 listener 依 Deposit event 入帳。
+     * @param _amount 儲值金額。
      */
     function deposit(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
@@ -54,6 +64,7 @@ contract VaultManager is Ownable, ReentrancyGuard {
 
     /**
      * @dev 遊戲合約或後端熱錢包將已結算遊戲利潤轉入可分配 bucket。
+     * @param _amount 要納入待分配收益的 USDT 金額。
      */
     function receiveGameProfit(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
@@ -64,6 +75,8 @@ contract VaultManager is Ownable, ReentrancyGuard {
 
     /**
      * @dev 管理員審核後執行提現；用戶餘額扣減由後端資料庫事務處理。
+     * @param _user 接收提現款項的使用者地址。
+     * @param _amount 提現金額。
      */
     function executeWithdrawal(address _user, uint256 _amount) external onlyOwner nonReentrant {
         require(_user != address(0), "Invalid user");
@@ -75,7 +88,9 @@ contract VaultManager is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 讓管理員動態調整分紅比例 (總和需為 100)
+     * @dev 讓管理員動態調整分紅比例，兩者總和需為 100。
+     * @param _rewardPercent 分配給收益寶的百分比。
+     * @param _platformPercent 分配給平台的百分比。
      */
     function setDistributionRatios(uint256 _rewardPercent, uint256 _platformPercent) external onlyOwner {
         require(_rewardPercent + _platformPercent == 100, "Total must be 100");
@@ -84,12 +99,20 @@ contract VaultManager is Ownable, ReentrancyGuard {
         emit RatiosUpdated(_rewardPercent, _platformPercent);
     }
 
+    /**
+     * @dev 設定接收收益寶分紅的 StakingVault 地址。
+     * @param _stakingVault 新的 StakingVault 地址。
+     */
     function setStakingVault(address _stakingVault) external onlyOwner {
         require(_stakingVault != address(0), "Invalid staking vault");
         stakingVault = _stakingVault;
         emit StakingVaultUpdated(_stakingVault);
     }
 
+    /**
+     * @dev 設定平台收益收款地址。
+     * @param _platformTreasury 新的平台收款地址。
+     */
     function setPlatformTreasury(address _platformTreasury) external onlyOwner {
         require(_platformTreasury != address(0), "Invalid treasury");
         platformTreasury = _platformTreasury;
@@ -98,6 +121,7 @@ contract VaultManager is Ownable, ReentrancyGuard {
 
     /**
      * @dev 每日結算：只允許分配已記錄的遊戲利潤，避免誤分用戶本金。
+     * @param _totalProfit 本次要分配的遊戲利潤金額。
      */
     function distributeBatchProfit(uint256 _totalProfit) external onlyOwner nonReentrant {
         require(_totalProfit > 0, "Profit must be > 0");
@@ -117,6 +141,11 @@ contract VaultManager is Ownable, ReentrancyGuard {
         emit ProfitDistributed(_totalProfit, rewardAmount, platformAmount);
     }
 
+    /**
+     * @dev 緊急提領指定 token 給合約擁有者，用於處理誤轉或特殊維運情境。
+     * @param _token 要提領的 ERC20 token 地址。
+     * @param _amount 要提領的 token 金額。
+     */
     function emergencyWithdraw(address _token, uint256 _amount) external onlyOwner {
         IERC20(_token).safeTransfer(owner(), _amount);
     }

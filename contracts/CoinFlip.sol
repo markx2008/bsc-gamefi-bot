@@ -35,6 +35,14 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
     event BetPlaced(address indexed player, uint256 amount, bool choice, uint256 requestId);
     event BetSettled(address indexed player, uint256 amount, bool win, uint256 requestId);
 
+    /**
+     * @dev 初始化遊戲合約，設定 USDT、VaultManager 與 Chainlink VRF 參數。
+     * @param _usdt 遊戲下注與派彩使用的 USDT token 地址。
+     * @param _vaultManager 輸家資金要轉入分配的 VaultManager 地址。
+     * @param _vrfCoordinator Chainlink VRF Coordinator 地址。
+     * @param _keyHash VRF gas lane key hash。
+     * @param _subscriptionId VRF subscription ID。
+     */
     constructor(
         address _usdt,
         address _vaultManager,
@@ -50,9 +58,10 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev 玩家下注
-     * @param _amount 下注金額
-     * @param _choice 選擇：true (正面), false (反面)
+     * @dev 玩家下注並送出 VRF 隨機數請求，等待回調後結算輸贏。
+     * @param _amount 下注金額。
+     * @param _choice 選擇：true 代表正面，false 代表反面。
+     * @return requestId Chainlink VRF 請求編號。
      */
     function flip(uint256 _amount, bool _choice) external nonReentrant returns (uint256 requestId) {
         require(_amount > 0, "Bet amount must be > 0");
@@ -78,7 +87,9 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
     }
 
     /**
-     * @dev Chainlink VRF 回傳隨機數後的回調函數
+     * @dev Chainlink VRF 回傳隨機數後的回調函數，依隨機結果派彩或轉交輸家資金。
+     * @param _requestId 對應下注的 VRF 請求編號。
+     * @param _randomWords VRF 回傳的隨機數陣列。
      */
     function fulfillRandomWords(uint256 _requestId, uint256[] memory _randomWords) internal override {
         RequestStatus storage request = s_requests[_requestId];
@@ -109,7 +120,10 @@ contract CoinFlip is VRFConsumerBaseV2, ReentrancyGuard, Ownable {
         }
     }
 
-    // 補充資金池（用於支付贏家的獎金）
+    /**
+     * @dev 合約擁有者補充遊戲資金池，用於支付贏家的獎金。
+     * @param _amount 要轉入合約的 USDT 金額。
+     */
     function fundPool(uint256 _amount) external onlyOwner {
         require(usdt.transferFrom(msg.sender, address(this), _amount), "Fund failed");
     }

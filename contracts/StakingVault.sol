@@ -38,11 +38,19 @@ contract StakingVault is Ownable, ReentrancyGuard {
     event RewardAdded(uint256 amount);
     event VaultManagerUpdated(address indexed vaultManager);
 
+    /**
+     * @dev 初始化收益寶合約，設定質押與獎金使用的 USDT token。
+     * @param _usdt 收益寶使用的 USDT token 地址。
+     */
     constructor(address _usdt) Ownable(msg.sender) {
         require(_usdt != address(0), "Invalid USDT");
         usdt = IERC20(_usdt);
     }
 
+    /**
+     * @dev 設定可通知獎金入帳的 VaultManager 地址。
+     * @param _vaultManager 新的 VaultManager 地址。
+     */
     function setVaultManager(address _vaultManager) external onlyOwner {
         require(_vaultManager != address(0), "Invalid vault manager");
         vaultManager = _vaultManager;
@@ -50,7 +58,8 @@ contract StakingVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 使用者質押 USDT
+     * @dev 使用者質押 USDT，並在追加質押前先更新既有獎金。
+     * @param _amount 要質押的 USDT 金額。
      */
     function stake(uint256 _amount) external nonReentrant {
         require(_amount > 0, "Amount must be > 0");
@@ -67,7 +76,8 @@ contract StakingVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 接收來自 VaultManager 的獎金
+     * @dev 接收來自 VaultManager 的獎金，依當前總質押量更新每股累積獎金。
+     * @param _amount 新增的獎金金額。
      */
     function notifyRewardAmount(uint256 _amount) external {
         require(msg.sender == vaultManager, "Only vault manager");
@@ -86,7 +96,7 @@ contract StakingVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 提現：必須滿 7 天，否則根據您的需求可設計罰金
+     * @dev 使用者提回本金與已累積獎金，必須滿 7 天鎖倉期。
      */
     function withdraw() external nonReentrant {
         Stake storage userStake = stakes[msg.sender];
@@ -110,7 +120,9 @@ contract StakingVault is Ownable, ReentrancyGuard {
     }
 
     /**
-     * @dev 查詢當前預計可得獎金
+     * @dev 查詢使用者目前預計可領取的獎金。
+     * @param _user 要查詢的使用者地址。
+     * @return 使用者目前累積的待領獎金。
      */
     function pendingReward(address _user) public view returns (uint256) {
         Stake storage userStake = stakes[_user];
@@ -119,6 +131,10 @@ contract StakingVault is Ownable, ReentrancyGuard {
         return userStake.accruedReward + accumulatedReward - userStake.rewardDebt;
     }
 
+    /**
+     * @dev 更新使用者的已累積獎金與 rewardDebt，供質押或提領流程使用。
+     * @param _user 要更新獎金狀態的使用者地址。
+     */
     function _updateReward(address _user) private {
         Stake storage userStake = stakes[_user];
         if (userStake.amount == 0) return;
