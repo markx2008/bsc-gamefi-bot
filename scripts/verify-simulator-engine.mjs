@@ -169,6 +169,32 @@ function findEffect(event, label) {
 {
   const config = {
     ...getDefaultSimulatorConfig(),
+    seed: 2,
+    initialGameBankroll: 1000,
+    initialBonusPool: 0,
+    playerArrivalMin: 1,
+    playerArrivalMax: 1,
+    gameTrafficPercent: 100,
+    stakingTrafficPercent: 0,
+    coinFlipPercent: 100,
+    dicePercent: 0,
+    luckySpinPercent: 0,
+    betSizeMin: 100,
+    betSizeMax: 100,
+    withdrawalRequestPercent: 0,
+  };
+  const state = stepSimulator(config, createInitialSimulatorState(config));
+  const gameEvent = state.events.find((event) => event.type === "game");
+
+  assert.ok(gameEvent.amount < 0, "fixed seed should produce a player win");
+  almostEqual(state.summary.gameBankroll, 913);
+  almostEqual(state.summary.userWithdrawableBalance, 87);
+  almostEqual(state.summary.platformLiquidity, 1000);
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
     seed: 7,
     playerArrivalMin: 3,
     playerArrivalMax: 3,
@@ -348,11 +374,30 @@ function findEffect(event, label) {
 
   almostEqual(state.summary.withdrawalsPaid, 20);
   almostEqual(state.summary.withdrawalShortfall, 80);
+  almostEqual(state.summary.pendingWithdrawals, 80);
   assert.ok(state.summary.warningCount > 0);
 
-  const shortfallEvent = state.events.find((event) => event.title === "提款缺口");
+  const shortfallEvent = state.events.find((event) => event.title === "逾期未付提款");
   assert.ok(shortfallEvent, "withdrawal shortfall should create an event");
-  almostEqual(findEffect(shortfallEvent, "提款缺口").amount, 80);
+  almostEqual(findEffect(shortfallEvent, "逾期未付提款").amount, 80);
+
+  state = {
+    ...state,
+    summary: {
+      ...state.summary,
+      platformLiquidity: 100,
+    },
+  };
+  state = stepSimulator({ ...config, withdrawalRequestPercent: 0 }, state);
+
+  almostEqual(state.summary.withdrawalShortfall, 0);
+  almostEqual(state.summary.pendingWithdrawals, 0);
+  almostEqual(state.summary.withdrawalsPaid, 100);
+
+  const repayEvent = state.events.find((event) => event.title === "缺口補付");
+  assert.ok(repayEvent, "later liquidity should repay unpaid withdrawal shortfall");
+  almostEqual(findEffect(repayEvent, "逾期未付提款").amount, -80);
+  almostEqual(findEffect(repayEvent, "平台流動性").amount, -80);
 }
 
 {

@@ -142,7 +142,7 @@ export default function SimulatorPage() {
         </header>
 
         <section className="grid gap-3 xl:grid-cols-2">
-          <MetricGroup title="平台資金" total={`$${formatMoney(platformFundsTotal)}`} detail="遊戲金庫 + 平台收益 + 收益寶獎金池">
+          <MetricGroup title="帳面平台資金" total={`$${formatMoney(platformFundsTotal)}`} detail="遊戲金庫 + 平台收益 + 收益寶獎金池">
             <Metric
               label="遊戲金庫"
               value={`$${formatMoney(summary.gameBankroll)}`}
@@ -151,6 +151,7 @@ export default function SimulatorPage() {
             />
             <Metric label="平台收益" value={`$${formatMoney(summary.platformRevenue)}`} detail={`${safeConfig.platformFeePercent}% 遊戲正利潤抽成`} tone="sky" />
             <Metric label="收益寶獎金池" value={`$${formatMoney(summary.bonusPool)}`} detail="未分配與上限保留資金" tone="green" />
+            <Metric label="平台流動性" value={`$${formatMoney(summary.platformLiquidity)}`} detail="實際提款支付扣這裡" tone={summary.platformLiquidity < summary.withdrawalShortfall ? "amber" : "green"} />
           </MetricGroup>
 
           <MetricGroup title="用戶資金" total={`$${formatMoney(userFundsTotal)}`} detail="鎖倉本金 + 非鎖倉可提款">
@@ -161,7 +162,7 @@ export default function SimulatorPage() {
 
         <section className="grid gap-3 md:grid-cols-3">
           <Metric label="待處理提款" value={`$${formatMoney(summary.pendingWithdrawals)}`} detail={`${safeConfig.withdrawalApprovalDelayHours} 小時審核延遲`} tone="amber" />
-          <Metric label="提款缺口" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail="平台流動性不足時累積" tone={summary.withdrawalShortfall > 0 ? "red" : "neutral"} />
+          <Metric label="逾期未付提款" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail="尚未補付的提款負債" tone={summary.withdrawalShortfall > 0 ? "red" : "neutral"} />
           <Metric label="即時 APY" value={`${formatPercent(summary.instantApyPercent)}%`} detail={apyHealthy ? "高於健康門檻" : `低於 ${safeConfig.healthyApyPercent}% 門檻`} tone={apyHealthy ? "green" : "amber"} />
         </section>
 
@@ -198,10 +199,10 @@ export default function SimulatorPage() {
                   { key: "userWithdrawableBalance", label: "可提款", color: "#38bdf8" },
                   { key: "pendingWithdrawals", label: "待提款", color: "#fbbf24" },
                 ]} />
-                <LineChart title="平台收益 / 流動性 / 提款缺口" history={state.history} lines={[
+                <LineChart title="平台收益 / 流動性 / 逾期未付提款" history={state.history} lines={[
                   { key: "platformRevenue", label: "平台收益", color: "#fbbf24" },
                   { key: "platformLiquidity", label: "平台流動性", color: "#22c55e" },
-                  { key: "withdrawalShortfall", label: "提款缺口", color: "#f87171" },
+                  { key: "withdrawalShortfall", label: "逾期未付", color: "#f87171" },
                 ]} />
                 <LineChart title="即時 APY / 實現 APY" history={state.history} lines={[
                   { key: "instantApyPercent", label: "即時 APY", color: "#34d399" },
@@ -222,7 +223,7 @@ export default function SimulatorPage() {
                         <th className="px-3 py-2 font-medium">已發分紅</th>
                         <th className="px-3 py-2 font-medium">即時 APY</th>
                         <th className="px-3 py-2 font-medium">實現 APY</th>
-                        <th className="px-3 py-2 font-medium">提款缺口</th>
+                        <th className="px-3 py-2 font-medium">逾期未付</th>
                         <th className="px-3 py-2 font-medium">狀態</th>
                       </tr>
                     </thead>
@@ -248,14 +249,14 @@ export default function SimulatorPage() {
                     <Trophy size={16} />
                   </div>
                   <p className="mt-3 text-3xl font-semibold text-white">{feeSweep.recommendedFeePercent}%</p>
-                    <p className="mt-2 text-sm text-zinc-400">規則：即時 APY 高於門檻、提款缺口為 0、金庫無警告時，選平台收益最高的抽成。</p>
+                    <p className="mt-2 text-sm text-zinc-400">規則：即時 APY 高於門檻、逾期未付為 0、金庫無警告時，選平台收益最高的抽成。</p>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                     <CompareTile label="10% 收益" value={`$${formatMoney(tenPercent.platformRevenue)}`} />
                     <CompareTile label="20% 收益" value={`$${formatMoney(twentyPercent.platformRevenue)}`} />
                     <CompareTile label="10% 即時APY" value={`${formatPercent(tenPercent.instantApyPercent)}%`} />
                     <CompareTile label="20% 即時APY" value={`${formatPercent(twentyPercent.instantApyPercent)}%`} />
-                    <CompareTile label="10% 缺口" value={`$${formatMoney(tenPercent.withdrawalShortfall)}`} />
-                    <CompareTile label="20% 缺口" value={`$${formatMoney(twentyPercent.withdrawalShortfall)}`} />
+                    <CompareTile label="10% 逾期" value={`$${formatMoney(tenPercent.withdrawalShortfall)}`} />
+                    <CompareTile label="20% 逾期" value={`$${formatMoney(twentyPercent.withdrawalShortfall)}`} />
                   </div>
                   {recommendedScenario ? (
                     <p className="mt-4 rounded-md border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-400">
@@ -278,7 +279,6 @@ export default function SimulatorPage() {
               <NumberField label="玩家本金上限" value={safeConfig.capitalMax} min={0} max={20000} step={10} onChange={(value) => updateConfig({ capitalMax: value })} />
               <NumberField label="下注下限" value={safeConfig.betSizeMin} min={0} max={1000} step={1} onChange={(value) => updateConfig({ betSizeMin: value })} />
               <NumberField label="下注上限" value={safeConfig.betSizeMax} min={0} max={5000} step={1} onChange={(value) => updateConfig({ betSizeMax: value })} />
-              <ReadOnlyRow label="平台流動性" value={`$${formatMoney(summary.platformLiquidity)}`} />
               <ReadOnlyRow label="已支付提款" value={`$${formatMoney(summary.withdrawalsPaid)}`} />
               <ReadOnlyRow label="實現 APY" value={`${formatPercent(summary.realizedApyPercent)}%`} />
             </div>

@@ -232,6 +232,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   let warningCount = state.summary.warningCount;
   let playersProcessed = state.summary.playersProcessed;
   const pendingWithdrawalQueue: PendingWithdrawal[] = [];
+  const carriedWithdrawalQueue: PendingWithdrawal[] = [];
 
   const activePositions: LockedPosition[] = [];
   let maturedPrincipal = 0;
@@ -272,24 +273,28 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
 
   for (const withdrawal of state.pendingWithdrawalQueue) {
     if (withdrawal.dueHour > currentHours) {
-      pendingWithdrawalQueue.push(withdrawal);
+      carriedWithdrawalQueue.push(withdrawal);
       continue;
     }
 
     const paid = Math.min(withdrawal.amount, Math.max(0, platformLiquidity));
     const shortfall = withdrawal.amount - paid;
+    const isOverdue = withdrawal.dueHour < currentHours;
     platformLiquidity -= paid;
     withdrawalsPaid += paid;
     if (paid > 0) {
+      if (isOverdue) {
+        withdrawalShortfall -= paid;
+      }
       events.push({
         id: nextEventId,
         tick: nextTick,
         type: "withdrawal",
-        title: "提款支付",
+        title: isOverdue ? "缺口補付" : "提款支付",
         amount: paid,
-        detail: "待處理提款通過延遲後由平台流動性支付",
+        detail: isOverdue ? "平台流動性恢復後補付逾期提款" : "待處理提款通過延遲後由平台流動性支付",
         effects: [
-          { label: "待處理提款", amount: -paid },
+          { label: isOverdue ? "逾期未付提款" : "待處理提款", amount: -paid },
           { label: "平台流動性", amount: -paid },
         ],
       });
@@ -297,16 +302,22 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     }
     if (shortfall > 0) {
       warningCount += 1;
-      withdrawalShortfall += shortfall;
+      if (!isOverdue) {
+        withdrawalShortfall += shortfall;
+      }
+      carriedWithdrawalQueue.push({
+        amount: shortfall,
+        dueHour: currentHours - normalizedConfig.tickHours,
+      });
       events.push({
         id: nextEventId,
         tick: nextTick,
         type: "warning",
-        title: "提款缺口",
+        title: "逾期未付提款",
         amount: shortfall,
         detail: "平台流動性不足，無法全額支付到期提款",
         effects: [
-          { label: "提款缺口", amount: shortfall },
+          { label: "逾期未付提款", amount: shortfall },
         ],
       });
       nextEventId += 1;
@@ -340,7 +351,6 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         bonusPool += distribution.bonusPoolCut;
       } else {
         gameBankroll += profit;
-        platformLiquidity += profit;
         userWithdrawableBalance += Math.abs(profit);
       }
 
@@ -350,7 +360,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         type: "game",
         title: GAME_LABELS[gameResult.game],
         amount: profit,
-        detail: profit >= 0 ? "莊家獲利，按費率分配平台與收益寶" : "玩家贏錢，遊戲金庫支出",
+        detail: profit >= 0 ? "莊家獲利，按費率分配平台與收益寶" : "玩家贏錢，先進入非鎖倉可提款，出金時才扣流動性",
         effects: profit >= 0
           ? [
             { label: "平台流動性", amount: profit },
@@ -360,7 +370,6 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
           ]
           : [
             { label: "遊戲金庫", amount: profit },
-            { label: "平台流動性", amount: profit },
             { label: "非鎖倉可提款", amount: Math.abs(profit) },
           ],
       });
@@ -462,7 +471,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   }
 
   const dueNow: PendingWithdrawal[] = [];
-  const stillPending: PendingWithdrawal[] = [];
+  const stillPending: PendingWithdrawal[] = [...carriedWithdrawalQueue];
   for (const withdrawal of pendingWithdrawalQueue) {
     if (withdrawal.dueHour <= currentHours) {
       dueNow.push(withdrawal);
@@ -481,11 +490,11 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         id: nextEventId,
         tick: nextTick,
         type: "withdrawal",
-        title: "提款支付",
+        title: withdrawal.dueHour < currentHours ? "缺口補付" : "提款支付",
         amount: paid,
-        detail: "提款申請已由平台流動性支付",
+        detail: withdrawal.dueHour < currentHours ? "平台流動性恢復後補付逾期提款" : "提款申請已由平台流動性支付",
         effects: [
-          { label: "待處理提款", amount: -paid },
+          { label: withdrawal.dueHour < currentHours ? "逾期未付提款" : "待處理提款", amount: -paid },
           { label: "平台流動性", amount: -paid },
         ],
       });
@@ -493,19 +502,29 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     }
     if (shortfall > 0) {
       warningCount += 1;
-      withdrawalShortfall += shortfall;
+      if (withdrawal.dueHour < currentHours && paid > 0) {
+        withdrawalShortfall -= paid;
+      } else if (withdrawal.dueHour >= currentHours) {
+        withdrawalShortfall += shortfall;
+      }
+      stillPending.push({
+        amount: shortfall,
+        dueHour: currentHours,
+      });
       events.push({
         id: nextEventId,
         tick: nextTick,
         type: "warning",
-        title: "提款缺口",
+        title: "逾期未付提款",
         amount: shortfall,
         detail: "平台流動性不足，無法全額支付提款申請",
         effects: [
-          { label: "提款缺口", amount: shortfall },
+          { label: "逾期未付提款", amount: shortfall },
         ],
       });
       nextEventId += 1;
+    } else if (withdrawal.dueHour < currentHours) {
+      withdrawalShortfall -= paid;
     }
   }
 
