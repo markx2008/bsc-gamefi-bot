@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
+  BarChart3,
   ExternalLink,
   History,
   Loader2,
@@ -325,6 +326,9 @@ export default function UserDashboard() {
             ) : null}
             <Link className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" href="/test">
               <History size={16} /> 測試頁
+            </Link>
+            <Link className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" href="/simulator">
+              <BarChart3 size={16} /> 試算頁
             </Link>
             <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => loadMe()} disabled={!token || loading}>
               {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} 刷新

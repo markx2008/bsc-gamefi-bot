@@ -47,6 +47,7 @@ flowchart LR
 - **遊戲盈餘：** 透過 3% 莊家優勢產生。
 - **利息補貼：** 90% 遊戲獲利進入獎金池，分配給鎖倉 7 天的投資者。
 - **平台收益：** 10% 遊戲獲利作為平台運作費用。
+- **前端試算：** `/simulator` 可用純前端模型壓測三款遊戲、收益寶獎金池與平台抽成比例，不連錢包、不串合約。
 
 ## 技術棧 (Tech Stack)
 - **Blockchain:** BSC (Solidity, Hardhat)
@@ -66,6 +67,7 @@ flowchart LR
 - [x] 核心國庫合約 (VaultManager.sol) 開發
 - [x] 後端儲值監聽器與 Prisma 帳務模型
 - [x] Web MVP wallet login、使用者資金流頁與 Admin 真資料後台
+- [x] 前端池子試算頁，用於比較遊戲流量、收益寶資金與平台抽成比例
 - [ ] BSC Testnet 真入金端到端驗證
 - [ ] 7 天鎖倉收益寶合約 (StakingVault.sol) 開發
 - [ ] 機率遊戲合約 (CoinFlip, Dice) 開發
@@ -105,7 +107,16 @@ Docker Compose 會自動建立本機 PostgreSQL，並把 app container 的 `DATA
 2. 啟動資料庫初始化：`npm run db:init`。
 3. 啟動 web：`npm run dev`。
 4. 開啟 `/`，使用 MetaMask 簽名登入一般使用者 Dashboard；此頁包含餘額、儲值/提現、遊戲入口、收益寶入口與近期紀錄。
-5. 開啟 `/test` 使用 Debug 工具頁；此頁只保留錢包登入、合約狀態檢查與 MockUSDT 測試充值，正式入金與提現請回 `/` 使用。
-6. 使用 `ADMIN_WALLET_ADDRESS` 對應錢包登入後，開啟 `/admin` 驗證提現審核與營運資料。
+5. 開啟 `/simulator` 使用純前端試算頁；可調整三款遊戲比例、收益寶資金比例、平台抽成與健康 APY 門檻，觀察池子長期變化。
+6. 開啟 `/test` 使用 Debug 工具頁；此頁只保留錢包登入、合約狀態檢查與 MockUSDT 測試充值，正式入金與提現請回 `/` 使用。
+7. 使用 `ADMIN_WALLET_ADDRESS` 對應錢包登入後，開啟 `/admin` 驗證提現審核與營運資料。
+
+### 試算驗證
+
+```bash
+npm run test:simulator
+```
+
+此驗證只檢查前端模擬引擎的可重現隨機、收益寶不透支、平台抽成比較與 7 天鎖倉到期邏輯。
 
 開發階段資料庫可以重建；目前 schema 以 wallet address 作為 `User` 的唯一識別。

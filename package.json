@@ -27,6 +27,7 @@
     "test:listener-startup": "node scripts/verify-listener-startup.mjs",
     "test:listener-checkpoint": "node scripts/verify-listener-checkpoint-safety.mjs",
     "test:withdrawal-approval": "node scripts/verify-withdrawal-approval-safety.mjs",
+    "test:simulator": "node scripts/verify-simulator-engine.mjs",
     "test:web-mvp": "node scripts/verify-web-mvp-routes.mjs",
     "test:docker-stack": "node scripts/verify-docker-compose-stack.mjs"
   },

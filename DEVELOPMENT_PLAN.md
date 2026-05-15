@@ -6,6 +6,7 @@
 - **莊家優勢：** 遊戲設定 2%~5% 的固定數學優勢。
 - **盈餘分配：** 遊戲純利的 **90%** 進入收益寶獎金池，**10%** 作為平台營運利潤。
 - **動態平衡：** 透過 7 天鎖倉與浮動 APY，當投資者過多時利潤稀釋，促使資金流向遊戲區，達成系統循環。
+- **試算工具：** Web 前端提供 `/simulator` 純計算頁，用相同 seed 比較 10%、20% 等平台抽成對收益寶 APY、獎金池與平台收益的影響。
 
 ## 2. 技術棧 (Tech Stack)
 - **區塊鏈層 (Blockchain):** BSC (Solidity, OpenZeppelin)
@@ -33,6 +34,7 @@
 - [x] 補齊 Zeabur listener 環境變數檢查文件：`VAULT_ADDRESS`、`RPC_URL`、`DATABASE_URL`、`USDT_DECIMALS`、`LISTENER_START_BLOCK`。
 
 ### 第二階段：極簡遊戲模組 (Phase 2: Minimalist Games)
+- [x] 建立三遊戲與收益寶池子前端試算頁，支援遊戲/收益寶比例與平台抽成 sweep。
 - [ ] 實作「公平性驗證演算法」。
 - [ ] 開發三款核心遊戲：
     - **猜硬幣 (Coin Flip)**
