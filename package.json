@@ -13,6 +13,7 @@
     "compile:contracts": "hardhat compile",
     "test:contracts": "hardhat test",
     "deploy:testnet": "hardhat run scripts/deploy.mjs --network bscTestnet",
+    "deploy:testnet:win": "npm install && npm run deploy:testnet",
     "server:dev": "ts-node server/src/services/listener.ts",
     "build:server": "tsc -p server/tsconfig.json",
     "test:server-config": "node scripts/verify-server-runtime.mjs",
