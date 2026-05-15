@@ -58,7 +58,11 @@ export function verifySessionToken(token: string, secret: string): SessionPayloa
   if (!payload.exp || Math.floor(Date.now() / 1000) > payload.exp) {
     throw new Error("Session expired");
   }
-  return payload;
+  return {
+    walletAddress: assertWalletAddress(payload.walletAddress),
+    iat: payload.iat,
+    exp: payload.exp,
+  };
 }
 
 export function getBearerSession(request: Request) {

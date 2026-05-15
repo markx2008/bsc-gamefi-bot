@@ -82,7 +82,7 @@ flowchart LR
 npm run docker:up
 ```
 
-3. 開啟 `http://localhost:3000` 測試前端。
+3. 開啟 `http://localhost:3000` 使用一般使用者 Dashboard。
 4. listener health check 可看 `http://localhost:3001/healthz`。
 5. 查看 web/listener log：
 
@@ -104,7 +104,8 @@ Docker Compose 會自動建立本機 PostgreSQL，並把 app container 的 `DATA
 1. 設定 `.env`：`DATABASE_URL`、`JWT_SECRET`、`ADMIN_WALLET_ADDRESS`、`VAULT_ADDRESS`、`USDT_ADDRESS`。
 2. 啟動資料庫初始化：`npm run db:init`。
 3. 啟動 web：`npm run dev`。
-4. 開啟 `/`，使用 MetaMask 簽名登入一般使用者流程。
-5. 使用 `ADMIN_WALLET_ADDRESS` 對應錢包登入後，開啟 `/admin` 驗證提現審核與營運資料。
+4. 開啟 `/`，使用 MetaMask 簽名登入一般使用者 Dashboard；此頁包含餘額、儲值/提現、遊戲入口、收益寶入口與近期紀錄。
+5. 開啟 `/test` 使用 Debug 工具頁；此頁只保留錢包登入、合約狀態檢查與 MockUSDT 測試充值，正式入金與提現請回 `/` 使用。
+6. 使用 `ADMIN_WALLET_ADDRESS` 對應錢包登入後，開啟 `/admin` 驗證提現審核與營運資料。
 
 開發階段資料庫可以重建；目前 schema 以 wallet address 作為 `User` 的唯一識別。

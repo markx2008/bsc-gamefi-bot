@@ -41,7 +41,10 @@ assert.equal(packageJson.scripts['db:init'], 'node scripts/init-db.mjs', 'db:ini
 assert.match(packageJson.scripts.start, /^npm run db:init && /, 'web start must initialize DB before Next starts');
 assert.equal(packageJson.scripts.server, 'node scripts/start-listener.mjs', 'listener server must use startup wrapper that initializes DB before launching listener');
 assert.ok(packageJson.dependencies.prisma, 'Prisma CLI must be available at runtime for db:init');
+assert.match(initDbSource, /import 'dotenv\/config';/, 'init-db script must load local .env before resolving DATABASE_URL');
 assert.match(initDbSource, /prisma db push/, 'init-db script must run prisma db push');
+assert.match(initDbSource, /DROP COLUMN IF EXISTS "tgId"/, 'init-db script must remove stale Telegram tgId column from existing web-only databases');
+assert.match(initDbSource, /prisma', 'db', 'execute'/, 'init-db script must execute explicit compatibility SQL before db push');
 assert.match(initDbSource, /INIT_DB_MAX_ATTEMPTS/, 'init-db script must allow configurable retry attempts');
 assert.match(initDbSource, /INIT_DB_RETRY_DELAY_MS/, 'init-db script must allow configurable retry delay');
 assert.match(initDbSource, /P1001|Can't reach database server/, 'init-db script must retry transient database connectivity errors');

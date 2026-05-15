@@ -1,9 +1,21 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowDownToLine, ExternalLink, Loader2, Shield, Wallet } from "lucide-react";
+import {
+  ArrowDownToLine,
+  ExternalLink,
+  History,
+  Loader2,
+  RefreshCw,
+  Shield,
+  Timer,
+  Trophy,
+  Vault,
+  Wallet,
+} from "lucide-react";
 import Link from "next/link";
 import { encodeFunctionData, formatUnits, parseAbi, parseUnits } from "viem";
+import { statusLabel, transactionTypeLabel, translateUiError } from "@/lib/ui-labels";
 
 type UserState = {
   id: number;
@@ -64,13 +76,19 @@ declare global {
 const TOKEN_KEY = "web_mvp_session_token";
 const TOKEN_DECIMALS = 18;
 
+const games = [
+  { title: "猜硬幣", text: "選擇正面或反面，使用內部餘額下注。", button: "開始猜硬幣" },
+  { title: "骰子", text: "選擇目標點數區間，依賠率結算輸贏。", button: "開始骰子" },
+  { title: "幸運轉盤", text: "使用獎池制分配回饋，適合做活動玩法。", button: "開始幸運轉盤" },
+];
+
 function formatUsdt(value: string | number | null | undefined) {
   const numeric = Number(value ?? 0);
   return numeric.toLocaleString("en-US", { maximumFractionDigits: 6 });
 }
 
 function shortAddress(value: string | null | undefined) {
-  if (!value) return "Not bound";
+  if (!value) return "未連線";
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
@@ -78,28 +96,38 @@ function walletLoginMessage(walletAddress: string) {
   return `Sign in to BSC GameFi Web with wallet ${walletAddress.toLowerCase()}`;
 }
 
-function vaultStatusMessage(data: MeResponse | null) {
-  if (!data) return "Sign in first to load VaultManager settings from the API.";
-  if (!data.config.vaultAddress) {
-    return "VAULT_ADDRESS is not configured on the server. Set it before true BSC Testnet deposit validation.";
-  }
-  return `VaultManager address: ${data.config.vaultAddress}`;
+function configStatus(data: MeResponse | null) {
+  if (!data) return "連接錢包後載入合約設定。";
+  if (!data.config.vaultAddress || !data.config.usdtAddress) return "合約設定尚未完整。";
+  return `${data.config.network} 已就緒`;
 }
 
-export default function WebValidationDashboard() {
+export default function UserDashboard() {
   const [token, setToken] = useState("");
   const [data, setData] = useState<MeResponse | null>(null);
-  const [withdrawAmount, setWithdrawAmount] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
-  const [tokenBalance, setTokenBalance] = useState("0");
+  const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [chainBalance, setChainBalance] = useState("0");
   const [depositAllowance, setDepositAllowance] = useState("0");
-  const [depositTxHash, setDepositTxHash] = useState("");
+  const [lastTxHash, setLastTxHash] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
   const authHeaders = useMemo(() => ({
     Authorization: `Bearer ${token}`,
   }), [token]);
+
+  function clearStoredSession() {
+    window.localStorage.removeItem(TOKEN_KEY);
+    setToken("");
+    setData(null);
+  }
+
+  function shouldClearSession(error: unknown) {
+    const message = error instanceof Error ? error.message : "";
+    return message.includes("Invalid") || message.includes("Unauthorized") || message.includes("Session") || message.includes("User not found")
+      || message.includes("無效") || message.includes("未授權") || message.includes("已過期") || message.includes("找不到使用者");
+  }
 
   useEffect(() => {
     const savedToken = window.localStorage.getItem(TOKEN_KEY);
@@ -113,14 +141,12 @@ export default function WebValidationDashboard() {
   async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
     const response = await fetch(url, init);
     const payload = await response.json();
-    if (!response.ok) throw new Error(payload.error || "Request failed");
+    if (!response.ok) throw new Error(translateUiError(payload.error || "請求失敗"));
     return payload as T;
   }
 
   async function walletRequest<T>(method: string, params?: unknown[]): Promise<T> {
-    if (!window.ethereum) {
-      throw new Error("MetaMask is not available in this browser.");
-    }
+    if (!window.ethereum) throw new Error("此瀏覽器沒有可用的 MetaMask。");
     return window.ethereum.request({ method, params }) as Promise<T>;
   }
 
@@ -128,16 +154,10 @@ export default function WebValidationDashboard() {
     setLoading(true);
     setStatus("");
     try {
-      if (!window.ethereum) {
-        throw new Error("MetaMask is not available in this browser.");
-      }
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const accounts = await walletRequest<string[]>("eth_requestAccounts");
       const walletAddress = accounts[0];
-      if (!walletAddress) throw new Error("No wallet account selected in MetaMask.");
-      const signature = await window.ethereum.request({
-        method: "personal_sign",
-        params: [walletLoginMessage(walletAddress), walletAddress],
-      }) as string;
+      if (!walletAddress) throw new Error("MetaMask 尚未選擇錢包帳戶。");
+      const signature = await walletRequest<string>("personal_sign", [walletLoginMessage(walletAddress), walletAddress]);
 
       const payload = await requestJson<{ token: string; resolvedDeposits: number }>("/api/auth/wallet-login", {
         method: "POST",
@@ -146,10 +166,10 @@ export default function WebValidationDashboard() {
       });
       window.localStorage.setItem(TOKEN_KEY, payload.token);
       setToken(payload.token);
-      setStatus(payload.resolvedDeposits > 0 ? `Wallet session ready. Resolved ${payload.resolvedDeposits} pending deposits.` : "Wallet session ready.");
+      setStatus(payload.resolvedDeposits > 0 ? `已解析 ${payload.resolvedDeposits} 筆待處理入金。` : "錢包已連接。");
       await loadMe(payload.token);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Login failed");
+      setStatus(error instanceof Error ? error.message : "錢包登入失敗");
     } finally {
       setLoading(false);
     }
@@ -165,7 +185,8 @@ export default function WebValidationDashboard() {
       setData(payload);
       await loadTokenState(payload);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load account");
+      if (shouldClearSession(error)) clearStoredSession();
+      setStatus(error instanceof Error ? error.message : "載入帳戶失敗");
     } finally {
       setLoading(false);
     }
@@ -194,14 +215,14 @@ export default function WebValidationDashboard() {
       })),
     ]);
 
-    setTokenBalance(formatUnits(BigInt(balanceHex), TOKEN_DECIMALS));
+    setChainBalance(formatUnits(BigInt(balanceHex), TOKEN_DECIMALS));
     setDepositAllowance(formatUnits(BigInt(allowanceHex), TOKEN_DECIMALS));
   }
 
   async function sendWalletTransaction(to: string, data: `0x${string}`) {
     const accounts = await walletRequest<string[]>("eth_requestAccounts");
     const from = accounts[0];
-    if (!from) throw new Error("No wallet account selected in MetaMask.");
+    if (!from) throw new Error("MetaMask 尚未選擇錢包帳戶。");
     return walletRequest<string>("eth_sendTransaction", [{ from, to, data }]);
   }
 
@@ -209,7 +230,7 @@ export default function WebValidationDashboard() {
     const usdtAddress = data?.config.usdtAddress;
     const vaultAddress = data?.config.vaultAddress;
     if (!usdtAddress || !vaultAddress) {
-      setStatus("USDT_ADDRESS and VAULT_ADDRESS are required before approval.");
+      setStatus("授權前需要先設定 USDT_ADDRESS 與 VAULT_ADDRESS。");
       return;
     }
 
@@ -217,16 +238,16 @@ export default function WebValidationDashboard() {
     setStatus("");
     try {
       const amount = parseUnits(depositAmount || "0", TOKEN_DECIMALS);
-      if (amount <= 0n) throw new Error("Deposit amount must be greater than 0.");
+      if (amount <= 0n) throw new Error("入金數量必須大於 0。");
       const txHash = await sendWalletTransaction(usdtAddress, encodeFunctionData({
         abi: ERC20_ABI,
         functionName: "approve",
         args: [vaultAddress as `0x${string}`, amount],
       }));
-      setDepositTxHash(txHash);
-      setStatus("Approve transaction submitted. Wait for confirmation, then press Refresh token state.");
+      setLastTxHash(txHash);
+      setStatus("授權交易已送出，確認後請刷新代幣狀態。");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Approve failed");
+      setStatus(error instanceof Error ? error.message : "授權失敗");
     } finally {
       setLoading(false);
     }
@@ -235,7 +256,7 @@ export default function WebValidationDashboard() {
   async function submitDeposit() {
     const vaultAddress = data?.config.vaultAddress;
     if (!vaultAddress) {
-      setStatus("VAULT_ADDRESS is required before deposit.");
+      setStatus("入金前需要先設定 VAULT_ADDRESS。");
       return;
     }
 
@@ -243,16 +264,16 @@ export default function WebValidationDashboard() {
     setStatus("");
     try {
       const amount = parseUnits(depositAmount || "0", TOKEN_DECIMALS);
-      if (amount <= 0n) throw new Error("Deposit amount must be greater than 0.");
+      if (amount <= 0n) throw new Error("入金數量必須大於 0。");
       const txHash = await sendWalletTransaction(vaultAddress, encodeFunctionData({
         abi: VAULT_ABI,
         functionName: "deposit",
         args: [amount],
       }));
-      setDepositTxHash(txHash);
-      setStatus("VaultManager.deposit transaction submitted. Start the listener, wait for confirmations, then refresh account balance.");
+      setLastTxHash(txHash);
+      setStatus("VaultManager 入金交易已送出，監聽器入帳後請刷新。");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Deposit failed");
+      setStatus(error instanceof Error ? error.message : "入金失敗");
     } finally {
       setLoading(false);
     }
@@ -272,110 +293,106 @@ export default function WebValidationDashboard() {
         body: JSON.stringify({ amount: withdrawAmount }),
       });
       setWithdrawAmount("");
-      setStatus("Withdrawal request submitted for admin review.");
+      setStatus("提現申請已送出，等待管理員審核。");
       await loadMe();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Withdrawal request failed");
+      setStatus(error instanceof Error ? error.message : "提現申請失敗");
     } finally {
       setLoading(false);
     }
   }
 
   const user = data?.user;
+  const recentActivity = [
+    ...(data?.transactions || []).map((item) => ({ id: `tx-${item.id}`, type: item.type, amount: item.amount, status: item.status, txHash: item.txHash })),
+    ...(data?.withdrawals || []).map((item) => ({ id: `wd-${item.id}`, type: "WITHDRAW", amount: item.amount, status: item.status, txHash: item.txHash })),
+  ].slice(0, 8);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-zinc-800 pb-5 md:flex-row md:items-center md:justify-between">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 border-b border-zinc-800 pb-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <p className="text-sm font-medium text-emerald-400">Web validation MVP</p>
-            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-white md:text-3xl">BSC GameFi 資金流驗證</h1>
+            <p className="text-sm font-medium text-emerald-400">BSC GameFi</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-white md:text-3xl">使用者儀表板</h1>
+            <p className="mt-2 text-sm text-zinc-400">{user ? shortAddress(user.walletAddress) : configStatus(data)}</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             {user?.isAdmin ? (
               <Link className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" href="/admin">
-                <Shield size={16} /> Admin
+                <Shield size={16} /> 後台
               </Link>
             ) : null}
-            <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadMe()} disabled={!token || loading}>
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <ArrowDownToLine size={16} />} Refresh
+            <Link className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" href="/test">
+              <History size={16} /> 測試頁
+            </Link>
+            <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900 disabled:cursor-not-allowed disabled:opacity-60" onClick={() => loadMe()} disabled={!token || loading}>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} 刷新
+            </button>
+            <button className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={signInWithWallet} disabled={loading}>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />} {user ? "切換錢包" : "登入"}
             </button>
           </div>
         </header>
 
-        <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-            <h2 className="text-base font-semibold text-white">Wallet Login</h2>
-            <p className="mt-1 text-sm text-zinc-400">Connect MetaMask and sign a wallet message to create a web session.</p>
-            <button className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={signInWithWallet} disabled={loading}>
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />} Sign in with wallet
-            </button>
-            {status ? <p className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{status}</p> : null}
-          </div>
+        {status ? <p className="rounded-md border border-zinc-800 bg-zinc-900 px-4 py-3 text-sm text-zinc-300">{status}</p> : null}
 
-          <div className="grid gap-4 md:grid-cols-3">
-            <Metric label="Internal balance" value={`$${formatUsdt(user?.balanceUsdt)}`} />
-            <Metric label="Pending withdrawals" value={`$${formatUsdt(user?.pendingWithdrawalTotal)}`} />
-            <Metric label="Available balance" value={`$${formatUsdt(user?.availableBalanceUsdt)}`} tone="green" />
-          </div>
+        <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="內部餘額" value={`$${formatUsdt(user?.balanceUsdt)}`} detail="可用於遊戲與提現" />
+          <Metric label="可用餘額" value={`$${formatUsdt(user?.availableBalanceUsdt)}`} detail="扣除待審提現後" tone="green" />
+          <Metric label="待審提現" value={`$${formatUsdt(user?.pendingWithdrawalTotal)}`} detail="等待管理員審核" />
+          <Metric label="鏈上餘額" value={`$${formatUsdt(chainBalance)}`} detail="目前錢包的 MockUSDT" />
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-2">
+        <section className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-            <div className="flex items-start justify-between gap-4">
+            <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-base font-semibold text-white">Wallet and Deposit</h2>
-                <p className="mt-1 text-sm text-zinc-400">登入錢包後，將 BSC Testnet USDT approve 並 deposit 到 VaultManager。</p>
+                <h2 className="text-base font-semibold text-white">資金</h2>
+                <p className="mt-1 text-sm text-zinc-400">從錢包存入內部餘額，之後可送出提現申請等待後台審核。</p>
               </div>
-              <Wallet className="text-emerald-400" size={22} />
+              <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">{configStatus(data)}</span>
             </div>
-            <dl className="mt-5 space-y-3 text-sm">
-              <Row label="Wallet" value={shortAddress(user?.walletAddress)} />
-              <Row label="Network" value={data?.config.network || "BSC Testnet"} />
-              <Row label="USDT" value={shortAddress(data?.config.usdtAddress)} />
-              <Row label="VaultManager" value={shortAddress(data?.config.vaultAddress)} />
-            </dl>
-            <p className={data?.config.vaultAddress ? "mt-4 text-xs leading-5 text-zinc-500" : "mt-4 text-xs leading-5 text-amber-300"}>
-              {vaultStatusMessage(data)}
-            </p>
+            <div className="mt-5 grid gap-5 lg:grid-cols-2">
+              <div>
+                <dl className="space-y-3 text-sm">
+                  <Row label="網路" value={data?.config.network || "BSC Testnet"} />
+                  <Row label="錢包" value={shortAddress(user?.walletAddress)} />
+                  <Row label="USDT" value={shortAddress(data?.config.usdtAddress)} />
+                  <Row label="VaultManager" value={shortAddress(data?.config.vaultAddress)} />
+                  <Row label="授權額度" value={`$${formatUsdt(depositAllowance)}`} />
+                </dl>
+              </div>
+              <div className="grid gap-4">
+                <label className="block text-sm text-zinc-300" htmlFor="depositAmount">入金數量 USDT</label>
+                <input
+                  id="depositAmount"
+                  className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                  inputMode="decimal"
+                  value={depositAmount}
+                  onChange={(event) => setDepositAmount(event.target.value)}
+                  placeholder="10"
+                />
+                <div className="flex flex-wrap gap-2">
+                  <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadTokenState()} disabled={!user?.walletAddress || loading}>
+                    <RefreshCw size={15} /> 代幣狀態
+                  </button>
+                  <button className="inline-flex items-center gap-2 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={approveDeposit} disabled={!user?.walletAddress || loading}>
+                    授權
+                  </button>
+                  <button className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={submitDeposit} disabled={!user?.walletAddress || loading}>
+                    存入 VaultManager
+                  </button>
+                </div>
+                {lastTxHash ? <p className="break-all text-xs text-zinc-500">最後交易：{lastTxHash}</p> : null}
+              </div>
+            </div>
           </div>
 
-          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-            <h2 className="text-base font-semibold text-white">Deposit</h2>
-            <p className="mt-1 text-sm text-zinc-400">Approve MockUSDT, then call VaultManager.deposit. Listener credits internal balance after the chain event.</p>
-            <dl className="mt-5 space-y-3 text-sm">
-              <Row label="MockUSDT balance" value={`$${formatUsdt(tokenBalance)}`} />
-              <Row label="Allowance" value={`$${formatUsdt(depositAllowance)}`} />
-            </dl>
-            <label className="mt-5 block text-sm text-zinc-300" htmlFor="depositAmount">Amount USDT</label>
-            <input
-              id="depositAmount"
-              className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              inputMode="decimal"
-              value={depositAmount}
-              onChange={(event) => setDepositAmount(event.target.value)}
-              placeholder="10"
-            />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadTokenState()} disabled={!user?.walletAddress || loading}>
-                Refresh token state
-              </button>
-              <button className="inline-flex items-center gap-2 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={approveDeposit} disabled={!user?.walletAddress || loading}>
-                Approve
-              </button>
-              <button className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={submitDeposit} disabled={!user?.walletAddress || loading}>
-                VaultManager.deposit
-              </button>
-            </div>
-            {depositTxHash ? <p className="mt-4 break-all text-xs text-zinc-500">Last tx: {depositTxHash}</p> : null}
-          </div>
-        </section>
-
-        <section className="grid gap-4 lg:grid-cols-2">
           <form className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5" onSubmit={requestWithdrawal}>
-            <h2 className="text-base font-semibold text-white">Withdrawal Request</h2>
-            <p className="mt-1 text-sm text-zinc-400">送出後會進入 Admin 審核，pending 金額會佔用可提餘額。</p>
-            <label className="mt-5 block text-sm text-zinc-300" htmlFor="withdrawAmount">Amount USDT</label>
+            <h2 className="text-base font-semibold text-white">提現</h2>
+            <p className="mt-1 text-sm text-zinc-400">提現申請會佔用可用餘額，直到管理員完成審核。</p>
+            <label className="mt-5 block text-sm text-zinc-300" htmlFor="withdrawAmount">提現數量 USDT</label>
             <input
               id="withdrawAmount"
               className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
@@ -384,31 +401,120 @@ export default function WebValidationDashboard() {
               onChange={(event) => setWithdrawAmount(event.target.value)}
               placeholder="10"
             />
-            <button className="mt-4 inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" disabled={!user?.walletAddress || loading}>
-              <ArrowDownToLine size={16} /> Submit
+            <button className="mt-4 inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" disabled={!user?.walletAddress || loading}>
+              <ArrowDownToLine size={16} /> 送出申請
             </button>
           </form>
+        </section>
+
+        <section className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-white">遊戲</h2>
+                <p className="mt-1 text-sm text-zinc-400">遊戲會使用內部餘額下注，並在平台帳本內結算。</p>
+              </div>
+              <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">預覽</span>
+            </div>
+            <div className="mt-5 divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
+              {games.map((game) => (
+                <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" key={game.title}>
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">{game.title}</h3>
+                    <p className="mt-1 text-xs text-zinc-500">{game.text}</p>
+                  </div>
+                  <button
+                    className="inline-flex min-w-[132px] items-center justify-center rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950"
+                    onClick={() => setStatus(`${game.title} 功能尚未開放，之後會接內部餘額下注。`)}
+                    type="button"
+                  >
+                    {game.button}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
 
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-            <h2 className="text-base font-semibold text-white">Listener Check</h2>
-            <p className="mt-1 text-sm leading-6 text-zinc-400">After deposit, run <span className="font-mono text-zinc-200">npm run server</span>. The listener reads the Deposit event and updates DB balance. Press Refresh in the header after the listener logs success.</p>
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-base font-semibold text-white">收益寶</h2>
+                <p className="mt-1 text-sm text-zinc-400">以賭養息獎金池的 7 天鎖倉預覽。</p>
+              </div>
+              <Vault className="text-sky-300" size={22} />
+            </div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <MiniMetric label="7 天鎖倉" value="固定週期" icon={<Timer size={16} />} />
+              <MiniMetric label="預估 APY" value="動態" icon={<Trophy size={16} />} />
+              <MiniMetric label="可投入資金" value={`$${formatUsdt(user?.availableBalanceUsdt)}`} icon={<Wallet size={16} />} />
+            </div>
+            <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">獎金池分配</p>
+                  <p className="mt-1 text-xs text-zinc-500">90% 遊戲獲利進入獎勵池，10% 進入平台金庫。</p>
+                </div>
+                <button className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-500" disabled>鎖倉即將開放</button>
+              </div>
+            </div>
           </div>
         </section>
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <ActivityTable title="Recent Transactions" items={data?.transactions || []} />
-          <ActivityTable title="Withdrawal Requests" items={data?.withdrawals || []} />
+        <section className="rounded-lg border border-zinc-800 bg-zinc-900/70">
+          <div className="flex items-center justify-between border-b border-zinc-800 px-5 py-4">
+            <h2 className="text-base font-semibold text-white">近期活動</h2>
+            <span className="text-xs text-zinc-500">交易與提現紀錄</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">類型</th>
+                  <th className="px-5 py-3 font-medium">金額</th>
+                  <th className="px-5 py-3 font-medium">狀態</th>
+                  <th className="px-5 py-3 font-medium">交易雜湊</th>
+                </tr>
+              </thead>
+              <tbody>
+                {recentActivity.length ? recentActivity.map((item) => (
+                  <tr className="border-t border-zinc-800" key={item.id}>
+                    <td className="px-5 py-3 text-zinc-200">{transactionTypeLabel(item.type)}</td>
+                    <td className="px-5 py-3 font-mono text-zinc-200">${formatUsdt(item.amount)}</td>
+                    <td className="px-5 py-3 text-zinc-400">{statusLabel(item.status)}</td>
+                    <td className="px-5 py-3 text-zinc-500">
+                      {item.txHash ? <span className="inline-flex items-center gap-1">{shortAddress(item.txHash)} <ExternalLink size={12} /></span> : "-"}
+                    </td>
+                  </tr>
+                )) : (
+                  <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={4}>尚無活動紀錄</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </section>
       </div>
     </main>
   );
 }
 
-function Metric({ label, value, tone = "neutral" }: { label: string; value: string; tone?: "neutral" | "green" }) {
+function Metric({ label, value, detail, tone = "neutral" }: { label: string; value: string; detail: string; tone?: "neutral" | "green" }) {
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-4">
       <p className="text-sm text-zinc-400">{label}</p>
       <p className={tone === "green" ? "mt-2 text-2xl font-semibold text-emerald-300" : "mt-2 text-2xl font-semibold text-white"}>{value}</p>
+      <p className="mt-1 text-xs text-zinc-500">{detail}</p>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value, icon }: { label: string; value: string; icon: React.ReactNode }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex items-center justify-between text-zinc-500">
+        <p className="text-xs">{label}</p>
+        {icon}
+      </div>
+      <p className="mt-2 text-sm font-semibold text-zinc-100">{value}</p>
     </div>
   );
 }
@@ -418,42 +524,6 @@ function Row({ label, value }: { label: string; value: string }) {
     <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-2">
       <dt className="text-zinc-500">{label}</dt>
       <dd className="font-mono text-zinc-200">{value}</dd>
-    </div>
-  );
-}
-
-function ActivityTable({ title, items }: { title: string; items: Array<Transaction | Withdrawal> }) {
-  return (
-    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
-      <div className="border-b border-zinc-800 px-5 py-4">
-        <h2 className="text-base font-semibold text-white">{title}</h2>
-      </div>
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-left text-sm">
-          <thead className="text-xs uppercase text-zinc-500">
-            <tr>
-              <th className="px-5 py-3 font-medium">Type</th>
-              <th className="px-5 py-3 font-medium">Amount</th>
-              <th className="px-5 py-3 font-medium">Status</th>
-              <th className="px-5 py-3 font-medium">Hash</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.length === 0 ? (
-              <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={4}>No records</td></tr>
-            ) : items.map((item) => (
-              <tr className="border-t border-zinc-800" key={`${title}-${item.id}`}>
-                <td className="px-5 py-3 text-zinc-200">{"type" in item ? item.type : "WITHDRAW"}</td>
-                <td className="px-5 py-3 font-mono text-zinc-200">${formatUsdt(item.amount)}</td>
-                <td className="px-5 py-3 text-zinc-400">{item.status}</td>
-                <td className="px-5 py-3 text-zinc-500">
-                  {item.txHash ? <span className="inline-flex items-center gap-1">{shortAddress(item.txHash)} <ExternalLink size={12} /></span> : "-"}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

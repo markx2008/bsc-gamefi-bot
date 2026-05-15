@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowLeft, ExternalLink, Loader2, ShieldAlert } from "lucide-react";
 import Link from "next/link";
+import { riskLabel, statusLabel, transactionTypeLabel, translateUiError } from "@/lib/ui-labels";
 
 type AdminUserDetail = {
   user: {
@@ -76,10 +77,10 @@ export default function UserAuditPage({ params }: { params: Promise<{ id: string
         headers: authHeaders,
       });
       const payload = await response.json();
-      if (!response.ok) throw new Error(payload.error || "Failed to load user");
+      if (!response.ok) throw new Error(translateUiError(payload.error || "載入使用者失敗"));
       setDetail(payload);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Failed to load user");
+      setStatus(error instanceof Error ? error.message : "載入使用者失敗");
     } finally {
       setLoading(false);
     }
@@ -93,42 +94,42 @@ export default function UserAuditPage({ params }: { params: Promise<{ id: string
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
         <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-5">
           <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white">
-            <ArrowLeft size={16} /> Back to admin
+            <ArrowLeft size={16} /> 返回後台
           </Link>
           <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={loadUser} disabled={!token || loading}>
-            {loading ? <Loader2 size={16} className="animate-spin" /> : null} Refresh
+            {loading ? <Loader2 size={16} className="animate-spin" /> : null} 刷新
           </button>
         </div>
 
         <header>
-          <p className="text-sm font-medium text-sky-400">User audit</p>
-          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{user?.walletAddress ? shortAddress(user.walletAddress) : `User #${resolvedParams.id}`}</h1>
+          <p className="text-sm font-medium text-sky-400">使用者審核</p>
+          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{user?.walletAddress ? shortAddress(user.walletAddress) : `使用者 #${resolvedParams.id}`}</h1>
           <p className="mt-2 font-mono text-sm text-zinc-500">{user?.walletAddress || "-"}</p>
         </header>
 
         {status ? <p className="rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">{status}</p> : null}
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-          <Metric label="Balance" value={`$${formatUsdt(user?.balanceUsdt)}`} />
-          <Metric label="Pending" value={`$${formatUsdt(user?.pendingWithdrawalTotal)}`} />
-          <Metric label="Total deposit" value={`$${formatUsdt(risk?.totalDeposit)}`} />
-          <Metric label="Withdrawn" value={`$${formatUsdt(risk?.totalWithdraw)}`} />
-          <Metric label="Risk" value={risk?.riskLevel || "-"} alert={risk?.riskLevel === "HIGH"} />
+          <Metric label="餘額" value={`$${formatUsdt(user?.balanceUsdt)}`} />
+          <Metric label="待審" value={`$${formatUsdt(user?.pendingWithdrawalTotal)}`} />
+          <Metric label="總入金" value={`$${formatUsdt(risk?.totalDeposit)}`} />
+          <Metric label="已提現" value={`$${formatUsdt(risk?.totalWithdraw)}`} />
+          <Metric label="風險" value={riskLabel(risk?.riskLevel)} alert={risk?.riskLevel === "HIGH"} />
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">
-          <RecordTable title="transactions" rows={(detail?.transactions || []).map((transaction) => ({
+          <RecordTable title="交易紀錄" rows={(detail?.transactions || []).map((transaction) => ({
             id: transaction.id,
-            type: transaction.type,
+            type: transactionTypeLabel(transaction.type),
             amount: transaction.amount,
-            status: transaction.status,
+            status: statusLabel(transaction.status),
             txHash: transaction.txHash,
           }))} />
-          <RecordTable title="withdrawals" rows={(detail?.withdrawals || []).map((withdrawal) => ({
+          <RecordTable title="提現紀錄" rows={(detail?.withdrawals || []).map((withdrawal) => ({
             id: withdrawal.id,
-            type: "WITHDRAW",
+            type: transactionTypeLabel("WITHDRAW"),
             amount: withdrawal.amount,
-            status: withdrawal.status,
+            status: statusLabel(withdrawal.status),
             txHash: withdrawal.txHash,
           }))} />
         </section>
@@ -158,10 +159,10 @@ function RecordTable({ title, rows }: { title: string; rows: Array<{ id: number;
         <table className="w-full min-w-[520px] text-left text-sm">
           <thead className="text-xs uppercase text-zinc-500">
             <tr>
-              <th className="px-5 py-3 font-medium">Type</th>
-              <th className="px-5 py-3 font-medium">Amount</th>
-              <th className="px-5 py-3 font-medium">Status</th>
-              <th className="px-5 py-3 font-medium">Hash</th>
+              <th className="px-5 py-3 font-medium">類型</th>
+              <th className="px-5 py-3 font-medium">金額</th>
+              <th className="px-5 py-3 font-medium">狀態</th>
+              <th className="px-5 py-3 font-medium">交易雜湊</th>
             </tr>
           </thead>
           <tbody>
@@ -174,7 +175,7 @@ function RecordTable({ title, rows }: { title: string; rows: Array<{ id: number;
                   {row.txHash ? <span className="inline-flex items-center gap-1">{shortAddress(row.txHash)} <ExternalLink size={12} /></span> : "-"}
                 </td>
               </tr>
-            )) : <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={4}>No records</td></tr>}
+            )) : <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={4}>尚無紀錄</td></tr>}
           </tbody>
         </table>
       </div>

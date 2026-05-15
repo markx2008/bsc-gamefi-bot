@@ -60,27 +60,70 @@ const homePage = read("src/app/page.tsx");
 assertIncludes(homePage, "/api/auth/wallet-login", "web dashboard");
 assertIncludes(homePage, "/api/me", "web dashboard");
 assertIncludes(homePage, "/api/withdrawals", "web dashboard");
-assertIncludes(homePage, "VaultManager", "web dashboard");
+assertIncludes(homePage, "BSC GameFi", "user dashboard");
+assertIncludes(homePage, "使用者儀表板", "user dashboard");
+assertIncludes(homePage, "遊戲", "user dashboard");
+assertIncludes(homePage, "猜硬幣", "games panel");
+assertIncludes(homePage, "骰子", "games panel");
+assertIncludes(homePage, "幸運轉盤", "games panel");
+assertIncludes(homePage, "開始猜硬幣", "games panel");
+assertIncludes(homePage, "開始骰子", "games panel");
+assertIncludes(homePage, "開始幸運轉盤", "games panel");
+assertIncludes(homePage, "收益寶", "earn panel");
+assertIncludes(homePage, "7 天鎖倉", "earn panel");
 assertIncludes(homePage, "encodeFunctionData", "deposit panel");
 assertIncludes(homePage, "approveDeposit", "deposit panel");
 assertIncludes(homePage, "submitDeposit", "deposit panel");
-assertIncludes(homePage, "MockUSDT balance", "deposit panel");
-assertIncludes(homePage, "Allowance", "deposit panel");
-assertIncludes(homePage, "VaultManager.deposit", "deposit panel");
+assertIncludes(homePage, "鏈上餘額", "deposit panel");
+assertIncludes(homePage, "授權額度", "deposit panel");
+assertIncludes(homePage, "存入 VaultManager", "deposit panel");
+
+const testPage = read("src/app/test/page.tsx");
+assertIncludes(testPage, "WebValidationDashboard", "test route");
+const testDashboard = read("src/components/user/WebValidationDashboard.tsx");
+assertIncludes(testDashboard, "Debug 工具頁", "test dashboard");
+assertIncludes(testDashboard, "回首頁", "test dashboard");
+assertIncludes(testDashboard, "/api/auth/wallet-login", "test dashboard");
+assertIncludes(testDashboard, "/api/me", "test dashboard");
+assert.ok(!testDashboard.includes("/api/withdrawals"), "test dashboard should not duplicate withdrawal flow");
+assert.ok(!testDashboard.includes("submitDeposit"), "test dashboard should not duplicate deposit flow");
+assert.ok(!testDashboard.includes("approveDeposit"), "test dashboard should not duplicate approval flow");
+assert.ok(!testDashboard.includes("requestWithdrawal"), "test dashboard should not duplicate withdrawal form");
+assertIncludes(testDashboard, "充值 MockUSDT", "test dashboard");
+assertIncludes(testDashboard, "function mint(address to, uint256 amount)", "test dashboard");
+assertIncludes(testDashboard, "mintTestUsdt", "test dashboard");
+
+const uiLabels = read("src/lib/ui-labels.ts");
+assertIncludes(uiLabels, "入金", "UI labels");
+assertIncludes(uiLabels, "提現", "UI labels");
+assertIncludes(uiLabels, "待處理", "UI labels");
+assertIncludes(uiLabels, "高風險", "UI labels");
+assertIncludes(uiLabels, "translateUiError", "UI labels");
 
 const adminPage = read("src/app/admin/page.tsx");
 assertIncludes(adminPage, "/api/admin/overview", "admin dashboard");
 assertIncludes(adminPage, "handleReview", "admin dashboard");
 assertIncludes(adminPage, "pendingWithdrawals", "admin dashboard");
+assertIncludes(adminPage, "營運後台", "admin dashboard");
+assertIncludes(adminPage, "待審提現", "admin dashboard");
+assertIncludes(adminPage, "核准", "admin dashboard");
+assertIncludes(adminPage, "拒絕", "admin dashboard");
 
 const adminUserPage = read("src/app/admin/users/[id]/page.tsx");
 assertIncludes(adminUserPage, "/api/admin/users/", "admin user page");
 assertIncludes(adminUserPage, "transactions", "admin user page");
 assertIncludes(adminUserPage, "withdrawals", "admin user page");
+assertIncludes(adminUserPage, "返回後台", "admin user page");
+assertIncludes(adminUserPage, "使用者審核", "admin user page");
+assertIncludes(adminUserPage, "交易紀錄", "admin user page");
 
 const authSource = read("src/lib/auth.ts");
 assertIncludes(authSource, "ADMIN_WALLET_ADDRESS", "auth helper");
 assertIncludes(authSource, "walletAddress", "session payload");
+assertIncludes(authSource, "assertWalletAddress(payload.walletAddress)", "session payload validation");
+
+assertIncludes(homePage, "clearStoredSession", "user dashboard stale token handling");
+assertIncludes(testDashboard, "clearStoredSession", "test dashboard stale token handling");
 
 const prismaSchema = read("prisma/schema.prisma");
 assertIncludes(prismaSchema, "walletAddress  String              @unique", "Prisma User model");

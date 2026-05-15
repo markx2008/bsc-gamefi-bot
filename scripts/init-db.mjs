@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import { spawnSync } from 'node:child_process';
 
 const DIRECT_DATABASE_URL_KEYS = [
@@ -42,6 +43,25 @@ function isTransientDatabaseError(output) {
   return output.includes('P1001') || output.includes("Can't reach database server");
 }
 
+function writeCommandOutput(result) {
+  if (result.stdout) process.stdout.write(result.stdout);
+  if (result.stderr) process.stderr.write(result.stderr);
+}
+
+function runPrismaCommand(args, options = {}) {
+  return spawnSync(prismaBin, args, {
+    env: process.env,
+    encoding: 'utf8',
+    ...options,
+  });
+}
+
+function runCompatibilitySql() {
+  return runPrismaCommand(['prisma', 'db', 'execute', '--schema', 'prisma/schema.prisma', '--stdin'], {
+    input: 'ALTER TABLE IF EXISTS "User" DROP COLUMN IF EXISTS "tgId";\n',
+  });
+}
+
 const databaseUrl = resolveDatabaseUrl();
 if (!databaseUrl) {
   throw new Error(
@@ -57,14 +77,27 @@ const retryDelayMs = Number(process.env.INIT_DB_RETRY_DELAY_MS || 5000);
 let attempt = 1;
 
 while (attempt <= maxAttempts) {
-  console.log(`🗄️ [DB] Initializing Prisma schema with prisma db push (attempt ${attempt}/${maxAttempts})`);
-  const result = spawnSync(prismaBin, ['prisma', 'db', 'push', '--skip-generate'], {
-    env: process.env,
-    encoding: 'utf8',
-  });
+  console.log(`🗄️ [DB] Applying web-only compatibility cleanup (attempt ${attempt}/${maxAttempts})`);
+  const cleanup = runCompatibilitySql();
 
-  if (result.stdout) process.stdout.write(result.stdout);
-  if (result.stderr) process.stderr.write(result.stderr);
+  writeCommandOutput(cleanup);
+  if (cleanup.error) throw cleanup.error;
+  if (cleanup.status !== 0) {
+    const output = `${cleanup.stdout || ''}\n${cleanup.stderr || ''}`;
+    if (!isTransientDatabaseError(output) || attempt === maxAttempts) {
+      process.exit(cleanup.status ?? 1);
+    }
+
+    console.warn(`⏳ [DB] Database is not reachable yet. Retrying in ${retryDelayMs}ms...`);
+    await sleep(retryDelayMs);
+    attempt += 1;
+    continue;
+  }
+
+  console.log(`🗄️ [DB] Initializing Prisma schema with prisma db push (attempt ${attempt}/${maxAttempts})`);
+  const result = runPrismaCommand(['prisma', 'db', 'push', '--skip-generate']);
+
+  writeCommandOutput(result);
   if (result.error) throw result.error;
   if (result.status === 0) process.exit(0);
 
