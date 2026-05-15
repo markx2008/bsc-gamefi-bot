@@ -1,106 +1,256 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"; // 假設組件已存在或稍後補齊
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { AlertCircle, ArrowUpCircle, Wallet, TrendingUp, ShieldAlert } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { CheckCircle, Loader2, RefreshCw, ShieldAlert, Users, Wallet, XCircle } from "lucide-react";
+import Link from "next/link";
+
+type AdminOverview = {
+  stats: {
+    totalUsers: number;
+    totalDeposits: string;
+    totalWithdrawals: string;
+    totalUserBalances: string;
+    pendingWithdrawalTotal: string;
+    pendingWithdrawalCount: number;
+    availableLiquidity: string;
+  };
+  pendingWithdrawals: Array<{
+    id: number;
+    amount: string;
+    walletAddress: string;
+    status: string;
+    createdAt: string;
+    user: {
+      id: number;
+      tgId: string;
+      walletAddress: string | null;
+      balanceUsdt: string;
+    };
+  }>;
+  recentUsers: Array<{
+    id: number;
+    tgId: string;
+    walletAddress: string | null;
+    balanceUsdt: string;
+    updatedAt: string;
+  }>;
+  recentTransactions: Array<{
+    id: number;
+    type: string;
+    amount: string;
+    status: string;
+    txHash: string | null;
+    createdAt: string;
+    user: {
+      id: number;
+      tgId: string;
+    };
+  }>;
+};
+
+const TOKEN_KEY = "web_mvp_session_token";
+
+function formatUsdt(value: string | number | null | undefined) {
+  const numeric = Number(value ?? 0);
+  return numeric.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function shortAddress(value: string | null | undefined) {
+  if (!value) return "-";
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
 
 export default function AdminDashboard() {
-  // 模擬數據，實際將從 API 獲取
-  const [stats, setStats] = useState({
-    totalDeposits: "1,240,000",
-    stakingTvl: "850,000",
-    availableLiquidity: "390,000",
-    pendingRewards90: "12,450",
-    platformTreasury10: "3,120",
-  });
+  const [token, setToken] = useState("");
+  const [overview, setOverview] = useState<AdminOverview | null>(null);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const authHeaders = useMemo(() => ({
+    Authorization: `Bearer ${token}`,
+  }), [token]);
+
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem(TOKEN_KEY);
+    if (savedToken) setToken(savedToken);
+  }, []);
+
+  useEffect(() => {
+    if (token) void loadOverview(token);
+  }, [token]);
+
+  async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
+    const response = await fetch(url, init);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.error || "Request failed");
+    return payload as T;
+  }
+
+  async function loginAdmin() {
+    setLoading(true);
+    setStatus("");
+    try {
+      const payload = await requestJson<{ token: string }>("/api/auth/dev-login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role: "admin" }),
+      });
+      window.localStorage.setItem(TOKEN_KEY, payload.token);
+      setToken(payload.token);
+      await loadOverview(payload.token);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Admin login failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function loadOverview(activeToken = token) {
+    if (!activeToken) return;
+    setLoading(true);
+    setStatus("");
+    try {
+      const payload = await requestJson<AdminOverview>("/api/admin/overview", {
+        headers: { Authorization: `Bearer ${activeToken}` },
+      });
+      setOverview(payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load admin overview");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleReview(id: number, action: "approve" | "reject") {
+    setLoading(true);
+    setStatus("");
+    try {
+      await requestJson(`/api/admin/withdrawals/${id}/${action}`, {
+        method: "POST",
+        headers: authHeaders,
+      });
+      setStatus(action === "approve" ? "Withdrawal approval submitted." : "Withdrawal rejected.");
+      await loadOverview();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Review failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const stats = overview?.stats;
 
   return (
-    <div className="p-8 bg-slate-950 text-slate-50 min-h-screen">
-      <header className="flex justify-between items-center mb-8">
-        <h1 className="text-3xl font-bold tracking-tight">🛡️ 平台管理後台</h1>
-        <div className="flex gap-4">
-           <div className="bg-green-500/10 text-green-500 px-4 py-2 rounded-full border border-green-500/20 text-sm">
-             系統對帳: 正常 (Audit Pass)
-           </div>
-           <button className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg text-sm transition">
-             連結管理員錢包
-           </button>
-        </div>
-      </header>
-
-      {/* 五大財務指標 */}
-      <div className="grid grid-cols-1 md:grid-cols-5 gap-4 mb-8">
-        <StatsCard title="儲值總金額" value={stats.totalDeposits} icon={<Wallet className="text-blue-400" />} />
-        <StatsCard title="當前鎖倉量 (TVL)" value={stats.stakingTvl} icon={<ShieldAlert className="text-purple-400" />} />
-        <StatsCard title="自由資金 (可出金)" value={stats.availableLiquidity} icon={<ArrowUpCircle className="text-green-400" />} />
-        <StatsCard title="待分配 (90%)" value={stats.pendingRewards90} icon={<TrendingUp className="text-yellow-400" />} />
-        <StatsCard title="平台餘額 (10%)" value={stats.platformTreasury10} icon={<AlertCircle className="text-red-400" />} btnText="提現" />
-      </div>
-
-      <Tabs defaultValue="withdrawals" className="w-full">
-        <TabsList className="bg-slate-900 border-slate-800">
-          <TabsTrigger value="withdrawals">提現審核</TabsTrigger>
-          <TabsTrigger value="games">遊戲統計</TabsTrigger>
-          <TabsTrigger value="users">用戶分析</TabsTrigger>
-        </TabsList>
-        
-        <TabsContent value="withdrawals" className="mt-6">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-            <h2 className="text-xl font-semibold mb-4 text-slate-200">待處理申請</h2>
-            {/* 提現列表組件將放在這裡 */}
-            <div className="text-slate-500 text-center py-10 italic">尚無待處理申請</div>
+    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <header className="flex flex-col gap-4 border-b border-zinc-800 pb-5 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <p className="text-sm font-medium text-sky-400">Admin Web MVP</p>
+            <h1 className="mt-1 text-2xl font-semibold tracking-normal text-white md:text-3xl">資金流營運後台</h1>
           </div>
-        </TabsContent>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" href="/">User dashboard</Link>
+            <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadOverview()} disabled={!token || loading}>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh
+            </button>
+            <button className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" onClick={loginAdmin} disabled={loading}>Dev admin login</button>
+          </div>
+        </header>
 
-        <TabsContent value="games" className="mt-6">
-           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <GameStatCard name="猜硬幣" volume="50,000" profit="+1,250" winRate="48.5%" />
-              <GameStatCard name="骰子比大小" volume="120,000" profit="+2,400" winRate="49.2%" />
-              <GameStatCard name="幸運轉盤" volume="35,000" profit="+3,100" winRate="46.8%" />
-           </div>
-        </TabsContent>
-      </Tabs>
-    </div>
+        {status ? <p className="rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">{status}</p> : null}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <Metric label="Total deposits" value={`$${formatUsdt(stats?.totalDeposits)}`} icon={<Wallet size={20} />} />
+          <Metric label="User liabilities" value={`$${formatUsdt(stats?.totalUserBalances)}`} icon={<ShieldAlert size={20} />} />
+          <Metric label="Pending withdrawals" value={`$${formatUsdt(stats?.pendingWithdrawalTotal)}`} detail={`${stats?.pendingWithdrawalCount ?? 0} requests`} icon={<RefreshCw size={20} />} />
+          <Metric label="Users" value={String(stats?.totalUsers ?? 0)} detail={`Available $${formatUsdt(stats?.availableLiquidity)}`} icon={<Users size={20} />} />
+        </section>
+
+        <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
+          <div className="border-b border-zinc-800 px-5 py-4">
+            <h2 className="text-base font-semibold text-white">Pending Withdrawals</h2>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[820px] text-left text-sm">
+              <thead className="text-xs uppercase text-zinc-500">
+                <tr>
+                  <th className="px-5 py-3 font-medium">User</th>
+                  <th className="px-5 py-3 font-medium">Wallet</th>
+                  <th className="px-5 py-3 font-medium">Amount</th>
+                  <th className="px-5 py-3 font-medium">User balance</th>
+                  <th className="px-5 py-3 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {overview?.pendingWithdrawals.length ? overview.pendingWithdrawals.map((withdrawal) => (
+                  <tr className="border-t border-zinc-800" key={withdrawal.id}>
+                    <td className="px-5 py-3 text-zinc-200">
+                      <Link className="hover:text-sky-300" href={`/admin/users/${withdrawal.user.id}`}>{withdrawal.user.tgId}</Link>
+                    </td>
+                    <td className="px-5 py-3 font-mono text-zinc-400">{shortAddress(withdrawal.walletAddress)}</td>
+                    <td className="px-5 py-3 font-mono text-zinc-100">${formatUsdt(withdrawal.amount)}</td>
+                    <td className="px-5 py-3 font-mono text-zinc-400">${formatUsdt(withdrawal.user.balanceUsdt)}</td>
+                    <td className="px-5 py-3">
+                      <div className="flex gap-2">
+                        <button className="inline-flex items-center gap-1 rounded-md border border-emerald-700 px-2 py-1 text-xs text-emerald-300 hover:bg-emerald-950" onClick={() => handleReview(withdrawal.id, "approve")} disabled={loading}>
+                          <CheckCircle size={14} /> Approve
+                        </button>
+                        <button className="inline-flex items-center gap-1 rounded-md border border-red-800 px-2 py-1 text-xs text-red-300 hover:bg-red-950" onClick={() => handleReview(withdrawal.id, "reject")} disabled={loading}>
+                          <XCircle size={14} /> Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                )) : (
+                  <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={5}>No pending withdrawals</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <SimpleList title="Recent Users" rows={(overview?.recentUsers || []).map((user) => ({
+            left: user.tgId,
+            right: `$${formatUsdt(user.balanceUsdt)}`,
+            href: `/admin/users/${user.id}`,
+          }))} />
+          <SimpleList title="Recent Transactions" rows={(overview?.recentTransactions || []).map((transaction) => ({
+            left: `${transaction.type} / ${transaction.user.tgId}`,
+            right: `${transaction.status} $${formatUsdt(transaction.amount)}`,
+          }))} />
+        </section>
+      </div>
+    </main>
   );
 }
 
-function StatsCard({ title, value, icon, btnText }: any) {
+function Metric({ label, value, detail, icon }: { label: string; value: string; detail?: string; icon: React.ReactNode }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl shadow-sm">
-      <div className="flex justify-between items-start mb-4">
-        <p className="text-slate-400 text-sm font-medium">{title}</p>
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+      <div className="flex items-center justify-between text-zinc-400">
+        <p className="text-sm">{label}</p>
         {icon}
       </div>
-      <div className="flex justify-between items-end">
-        <h3 className="text-2xl font-bold text-slate-100">${value}</h3>
-        {btnText && (
-          <button className="text-xs bg-red-500/10 text-red-500 border border-red-500/20 px-2 py-1 rounded hover:bg-red-500/20 transition">
-            {btnText}
-          </button>
-        )}
-      </div>
+      <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
+      {detail ? <p className="mt-1 text-xs text-zinc-500">{detail}</p> : null}
     </div>
   );
 }
 
-function GameStatCard({ name, volume, profit, winRate }: any) {
+function SimpleList({ title, rows }: { title: string; rows: Array<{ left: string; right: string; href?: string }> }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 p-6 rounded-2xl">
-      <h3 className="text-lg font-bold mb-4">{name}</h3>
-      <div className="space-y-3">
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">總流水:</span>
-          <span className="text-slate-200">${volume}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">莊家盈餘:</span>
-          <span className="text-green-400 font-medium">{profit}</span>
-        </div>
-        <div className="flex justify-between text-sm">
-          <span className="text-slate-500">用戶勝率:</span>
-          <span className="text-slate-200">{winRate}</span>
-        </div>
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70">
+      <div className="border-b border-zinc-800 px-5 py-4">
+        <h2 className="text-base font-semibold text-white">{title}</h2>
+      </div>
+      <div className="divide-y divide-zinc-800">
+        {rows.length ? rows.map((row, index) => (
+          <div className="flex items-center justify-between gap-4 px-5 py-3 text-sm" key={`${row.left}-${index}`}>
+            {row.href ? <Link className="text-zinc-200 hover:text-sky-300" href={row.href}>{row.left}</Link> : <span className="text-zinc-200">{row.left}</span>}
+            <span className="font-mono text-zinc-400">{row.right}</span>
+          </div>
+        )) : <p className="px-5 py-8 text-center text-sm text-zinc-500">No records</p>}
       </div>
     </div>
   );

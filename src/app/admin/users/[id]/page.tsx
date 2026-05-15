@@ -1,114 +1,184 @@
 "use client";
 
-import React from "react";
-import { ArrowLeft, CheckCircle, XCircle, ExternalLink, ShieldAlert } from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { ArrowLeft, ExternalLink, Loader2, ShieldAlert } from "lucide-react";
 import Link from "next/link";
 
-export default function UserAuditPage({ params }: { params: { id: string } }) {
-  // 模擬用戶數據
-  const userSummary = {
-    tgId: "TG_88291",
-    address: "0x71C...3921",
-    totalDeposit: 1000.0,
-    totalWithdraw: 200.0,
-    gameProfit: 850.5,
-    netBalance: 1650.5,
+type AdminUserDetail = {
+  user: {
+    id: number;
+    tgId: string;
+    walletAddress: string | null;
+    balanceUsdt: string;
+    pendingWithdrawalTotal: string;
   };
+  risk: {
+    totalDeposit: string;
+    totalWithdraw: string;
+    gameProfit: string;
+    stakingReward: string;
+    riskLevel: string;
+  };
+  transactions: Array<{
+    id: number;
+    type: string;
+    amount: string;
+    status: string;
+    txHash: string | null;
+    createdAt: string;
+  }>;
+  withdrawals: Array<{
+    id: number;
+    amount: string;
+    walletAddress: string;
+    status: string;
+    txHash: string | null;
+    createdAt: string;
+  }>;
+};
 
-  // 模擬流水數據
-  const transactions = [
-    { id: 1, type: "DEPOSIT", amount: "+1,000.00", status: "SUCCESS", time: "2026-05-01 10:00:00", hash: "0x123...abc" },
-    { id: 2, type: "GAME_LOSS", amount: "-100.00", status: "SUCCESS", time: "2026-05-01 10:05:00", game: "猜硬幣" },
-    { id: 3, type: "GAME_WIN", amount: "+950.50", status: "SUCCESS", time: "2026-05-01 10:10:00", game: "骰子比大小" },
-    { id: 4, type: "WITHDRAW", amount: "-200.00", status: "SUCCESS", time: "2026-05-02 09:00:00", hash: "0x456...def" },
-    { id: 5, type: "WITHDRAW", amount: "1,600.00", status: "PENDING", time: "2026-05-05 14:00:00", note: "當前申請" },
-  ];
+const TOKEN_KEY = "web_mvp_session_token";
+
+function formatUsdt(value: string | number | null | undefined) {
+  const numeric = Number(value ?? 0);
+  return numeric.toLocaleString("en-US", { maximumFractionDigits: 6 });
+}
+
+function shortAddress(value: string | null | undefined) {
+  if (!value) return "-";
+  return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+export default function UserAuditPage({ params }: { params: Promise<{ id: string }> }) {
+  const resolvedParams = React.use(params);
+  const [token, setToken] = useState("");
+  const [detail, setDetail] = useState<AdminUserDetail | null>(null);
+  const [status, setStatus] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const authHeaders = useMemo(() => ({
+    Authorization: `Bearer ${token}`,
+  }), [token]);
+
+  useEffect(() => {
+    const savedToken = window.localStorage.getItem(TOKEN_KEY);
+    if (savedToken) setToken(savedToken);
+  }, []);
+
+  useEffect(() => {
+    if (token) void loadUser();
+  }, [token]);
+
+  async function loadUser() {
+    setLoading(true);
+    setStatus("");
+    try {
+      const response = await fetch(`/api/admin/users/${resolvedParams.id}`, {
+        headers: authHeaders,
+      });
+      const payload = await response.json();
+      if (!response.ok) throw new Error(payload.error || "Failed to load user");
+      setDetail(payload);
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Failed to load user");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const user = detail?.user;
+  const risk = detail?.risk;
 
   return (
-    <div className="p-8 bg-slate-950 text-slate-50 min-h-screen">
-      <div className="mb-6">
-        <Link href="/admin" className="flex items-center text-slate-400 hover:text-white transition">
-          <ArrowLeft size={16} className="mr-2" /> 返回管理後台
-        </Link>
-      </div>
-
-      <header className="flex justify-between items-start mb-8">
-        <div>
-          <h1 className="text-3xl font-bold">用戶審核: {userSummary.tgId}</h1>
-          <p className="text-slate-500 mt-1">錢包地址: {userSummary.address}</p>
-        </div>
-        <div className="flex gap-3">
-          <button className="flex items-center bg-red-600 hover:bg-red-700 text-white px-6 py-2 rounded-lg font-medium transition">
-            <XCircle size={18} className="mr-2" /> 拒絕並凍結
-          </button>
-          <button className="flex items-center bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-lg font-medium transition">
-            <CheckCircle size={18} className="mr-2" /> 核准提現
+    <main className="min-h-screen bg-zinc-950 text-zinc-100">
+      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between gap-4 border-b border-zinc-800 pb-5">
+          <Link href="/admin" className="inline-flex items-center gap-2 text-sm text-zinc-400 hover:text-white">
+            <ArrowLeft size={16} /> Back to admin
+          </Link>
+          <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={loadUser} disabled={!token || loading}>
+            {loading ? <Loader2 size={16} className="animate-spin" /> : null} Refresh
           </button>
         </div>
-      </header>
 
-      {/* 用戶財務總結 */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <SummaryCard title="總儲值 (In)" value={`$${userSummary.totalDeposit}`} color="text-slate-200" />
-        <SummaryCard 
-          title="遊戲總盈虧" 
-          value={`+ $${userSummary.gameProfit}`} 
-          color="text-green-400" 
-          extra={userSummary.gameProfit > userSummary.totalDeposit ? <ShieldAlert size={16} className="text-red-500" /> : null}
-        />
-        <SummaryCard title="已提現 (Out)" value={`$${userSummary.totalWithdraw}`} color="text-slate-400" />
-        <SummaryCard title="當前總結餘" value={`$${userSummary.netBalance}`} color="text-blue-400" />
-      </div>
+        <header>
+          <p className="text-sm font-medium text-sky-400">User audit</p>
+          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{user?.tgId || `User #${resolvedParams.id}`}</h1>
+          <p className="mt-2 font-mono text-sm text-zinc-500">{user?.walletAddress || "No wallet bound"}</p>
+        </header>
 
-      {/* 詳細流水表 */}
-      <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden">
-        <div className="px-6 py-4 border-b border-slate-800 bg-slate-900/50">
-          <h3 className="font-semibold text-slate-200">全量交易流水 (Audit Logs)</h3>
-        </div>
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="text-slate-500 text-xs uppercase border-b border-slate-800">
-              <th className="px-6 py-4 font-medium">時間</th>
-              <th className="px-6 py-4 font-medium">類型</th>
-              <th className="px-6 py-4 font-medium">金額 (USDT)</th>
-              <th className="px-6 py-4 font-medium">狀態</th>
-              <th className="px-6 py-4 font-medium">詳情/憑證</th>
-            </tr>
-          </thead>
-          <tbody className="text-sm">
-            {transactions.map((tx) => (
-              <tr key={tx.id} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition">
-                <td className="px-6 py-4 text-slate-400">{tx.time}</td>
-                <td className="px-6 py-4 font-medium">
-                   <span className={tx.type.includes('WIN') ? 'text-green-500' : tx.type.includes('LOSS') ? 'text-red-400' : 'text-slate-200'}>
-                     {tx.type}
-                   </span>
-                </td>
-                <td className="px-6 py-4 font-mono font-medium">{tx.amount}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] ${tx.status === 'SUCCESS' ? 'bg-green-500/10 text-green-500' : 'bg-yellow-500/10 text-yellow-500'}`}>
-                    {tx.status}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-slate-500 text-xs">
-                  {tx.game ? `遊戲: ${tx.game}` : tx.hash ? <span className="flex items-center cursor-pointer hover:text-blue-400">{tx.hash} <ExternalLink size={12} className="ml-1" /></span> : tx.note}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {status ? <p className="rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">{status}</p> : null}
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+          <Metric label="Balance" value={`$${formatUsdt(user?.balanceUsdt)}`} />
+          <Metric label="Pending" value={`$${formatUsdt(user?.pendingWithdrawalTotal)}`} />
+          <Metric label="Total deposit" value={`$${formatUsdt(risk?.totalDeposit)}`} />
+          <Metric label="Withdrawn" value={`$${formatUsdt(risk?.totalWithdraw)}`} />
+          <Metric label="Risk" value={risk?.riskLevel || "-"} alert={risk?.riskLevel === "HIGH"} />
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
+          <RecordTable title="transactions" rows={(detail?.transactions || []).map((transaction) => ({
+            id: transaction.id,
+            type: transaction.type,
+            amount: transaction.amount,
+            status: transaction.status,
+            txHash: transaction.txHash,
+          }))} />
+          <RecordTable title="withdrawals" rows={(detail?.withdrawals || []).map((withdrawal) => ({
+            id: withdrawal.id,
+            type: "WITHDRAW",
+            amount: withdrawal.amount,
+            status: withdrawal.status,
+            txHash: withdrawal.txHash,
+          }))} />
+        </section>
       </div>
+    </main>
+  );
+}
+
+function Metric({ label, value, alert = false }: { label: string; value: string; alert?: boolean }) {
+  return (
+    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+      <p className="flex items-center gap-2 text-sm text-zinc-400">
+        {label} {alert ? <ShieldAlert className="text-red-300" size={15} /> : null}
+      </p>
+      <p className={alert ? "mt-2 text-2xl font-semibold text-red-300" : "mt-2 text-2xl font-semibold text-white"}>{value}</p>
     </div>
   );
 }
 
-function SummaryCard({ title, value, color, extra }: any) {
+function RecordTable({ title, rows }: { title: string; rows: Array<{ id: number; type: string; amount: string; status: string; txHash: string | null }> }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 p-5 rounded-xl">
-      <p className="text-slate-500 text-xs font-medium uppercase mb-1 flex items-center gap-2">
-        {title} {extra}
-      </p>
-      <h3 className={`text-xl font-bold ${color}`}>{value}</h3>
+    <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">
+      <div className="border-b border-zinc-800 px-5 py-4">
+        <h2 className="text-base font-semibold text-white">{title}</h2>
+      </div>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[520px] text-left text-sm">
+          <thead className="text-xs uppercase text-zinc-500">
+            <tr>
+              <th className="px-5 py-3 font-medium">Type</th>
+              <th className="px-5 py-3 font-medium">Amount</th>
+              <th className="px-5 py-3 font-medium">Status</th>
+              <th className="px-5 py-3 font-medium">Hash</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.length ? rows.map((row) => (
+              <tr className="border-t border-zinc-800" key={`${title}-${row.id}`}>
+                <td className="px-5 py-3 text-zinc-200">{row.type}</td>
+                <td className="px-5 py-3 font-mono text-zinc-200">${formatUsdt(row.amount)}</td>
+                <td className="px-5 py-3 text-zinc-400">{row.status}</td>
+                <td className="px-5 py-3 text-zinc-500">
+                  {row.txHash ? <span className="inline-flex items-center gap-1">{shortAddress(row.txHash)} <ExternalLink size={12} /></span> : "-"}
+                </td>
+              </tr>
+            )) : <tr><td className="px-5 py-8 text-center text-zinc-500" colSpan={4}>No records</td></tr>}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

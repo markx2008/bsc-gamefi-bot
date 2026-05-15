@@ -21,7 +21,8 @@
     "test:database-env": "node scripts/verify-database-env-config.mjs",
     "test:listener-startup": "node scripts/verify-listener-startup.mjs",
     "test:listener-checkpoint": "node scripts/verify-listener-checkpoint-safety.mjs",
-    "test:withdrawal-approval": "node scripts/verify-withdrawal-approval-safety.mjs"
+    "test:withdrawal-approval": "node scripts/verify-withdrawal-approval-safety.mjs",
+    "test:web-mvp": "node scripts/verify-web-mvp-routes.mjs"
   },
   "keywords": [],
   "author": "",

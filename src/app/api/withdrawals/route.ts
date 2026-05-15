@@ -15,18 +15,29 @@ export async function POST(request: Request) {
     const { amount } = await request.json();
     const withdrawAmount = parsePositiveDecimal(amount);
 
-    const user = await prisma.user.findUnique({ where: { tgId: session.tgId } });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
-    if (!user.walletAddress) return NextResponse.json({ error: "Wallet not bound" }, { status: 400 });
-    if (user.balanceUsdt.lt(withdrawAmount)) return NextResponse.json({ error: "Insufficient balance" }, { status: 400 });
+    const withdrawal = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { tgId: session.tgId } });
+      if (!user) throw new Error("User not found");
+      if (!user.walletAddress) throw new Error("Wallet not bound");
 
-    const withdrawal = await prisma.withdrawalRequest.create({
-      data: {
-        userId: user.id,
-        amount: withdrawAmount,
-        walletAddress: user.walletAddress,
-        status: "PENDING",
-      },
+      const pendingWithdrawals = await tx.withdrawalRequest.aggregate({
+        where: { userId: user.id, status: "PENDING" },
+        _sum: { amount: true },
+      });
+      const pendingWithdrawalTotal = pendingWithdrawals._sum.amount ?? new Prisma.Decimal(0);
+      const totalRequested = pendingWithdrawalTotal.plus(withdrawAmount);
+      if (user.balanceUsdt.lt(totalRequested)) throw new Error("Insufficient available balance");
+
+      return tx.withdrawalRequest.create({
+        data: {
+          userId: user.id,
+          amount: withdrawAmount,
+          walletAddress: user.walletAddress,
+          status: "PENDING",
+        },
+      });
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
 
     return NextResponse.json({
