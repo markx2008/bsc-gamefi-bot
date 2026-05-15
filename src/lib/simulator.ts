@@ -21,6 +21,7 @@ export type SimulatorConfig = {
   gameBankrollReservePercent: number;
   stakingLockDays: number;
   stakingPeriodRewardCapPercent: number;
+  externalEarnApyPercent: number;
   healthyApyPercent: number;
   withdrawalRequestPercent: number;
   withdrawalApprovalDelayHours: number;
@@ -53,6 +54,27 @@ export type SimulatorEvent = {
   effects: SimulatorEventEffect[];
 };
 
+export type GameStats = {
+  rounds: number;
+  totalBetAmount: number;
+  houseNetProfit: number;
+  houseWinAmount: number;
+  playerWinAmount: number;
+  houseWinRounds: number;
+  playerWinRounds: number;
+};
+
+export type EarnStats = {
+  initialBonusPool: number;
+  totalPrincipalLocked: number;
+  maturedPrincipal: number;
+  externalYieldIncome: number;
+  gameSubsidyIncome: number;
+  rewardsAccrued: number;
+  rewardsReleased: number;
+  activeRewardAccrued: number;
+};
+
 export type SimulatorSummary = {
   tick: number;
   simulatedDays: number;
@@ -70,6 +92,8 @@ export type SimulatorSummary = {
   realizedApyPercent: number;
   warningCount: number;
   playersProcessed: number;
+  gameStats: Record<GameKey, GameStats>;
+  earnStats: EarnStats;
 };
 
 export type SimulatorHistoryPoint = SimulatorSummary;
@@ -118,7 +142,7 @@ export function getDefaultSimulatorConfig(): SimulatorConfig {
   return {
     seed: 42,
     tickHours: 1,
-    initialGameBankroll: 100_000,
+    initialGameBankroll: 95_000,
     initialBonusPool: 5_000,
     playerArrivalMin: 2,
     playerArrivalMax: 8,
@@ -132,10 +156,11 @@ export function getDefaultSimulatorConfig(): SimulatorConfig {
     dicePercent: 35,
     luckySpinPercent: 25,
     houseEdgePercent: 3,
-    platformFeePercent: 10,
-    gameBankrollReservePercent: 20,
+    platformFeePercent: 5,
+    gameBankrollReservePercent: 90,
     stakingLockDays: 7,
     stakingPeriodRewardCapPercent: 10,
+    externalEarnApyPercent: 8,
     healthyApyPercent: 20,
     withdrawalRequestPercent: 2,
     withdrawalApprovalDelayHours: 24,
@@ -166,6 +191,7 @@ export function normalizeSimulatorConfig(config: Partial<SimulatorConfig>): Simu
     gameBankrollReservePercent: safeNumber(config.gameBankrollReservePercent, defaults.gameBankrollReservePercent),
     stakingLockDays: safeNumber(config.stakingLockDays, defaults.stakingLockDays),
     stakingPeriodRewardCapPercent: safeNumber(config.stakingPeriodRewardCapPercent, defaults.stakingPeriodRewardCapPercent),
+    externalEarnApyPercent: safeNumber(config.externalEarnApyPercent, defaults.externalEarnApyPercent),
     healthyApyPercent: safeNumber(config.healthyApyPercent, defaults.healthyApyPercent),
     withdrawalRequestPercent: safeNumber(config.withdrawalRequestPercent, defaults.withdrawalRequestPercent),
     withdrawalApprovalDelayHours: safeNumber(config.withdrawalApprovalDelayHours, defaults.withdrawalApprovalDelayHours),
@@ -198,6 +224,8 @@ export function createInitialSimulatorState(config: SimulatorConfig): SimulatorS
       realizedApyPercent: 0,
       warningCount: 0,
       playersProcessed: 0,
+      gameStats: createEmptyGameStats(),
+      earnStats: createEmptyEarnStats(normalizedConfig.initialBonusPool),
     },
   };
 }
@@ -231,6 +259,8 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   let rewardsPaid = state.summary.rewardsPaid;
   let warningCount = state.summary.warningCount;
   let playersProcessed = state.summary.playersProcessed;
+  const gameStats = cloneGameStats(state.summary.gameStats ?? createEmptyGameStats());
+  const earnStats = { ...(state.summary.earnStats ?? createEmptyEarnStats(normalizedConfig.initialBonusPool)) };
   const pendingWithdrawalQueue: PendingWithdrawal[] = [];
   const carriedWithdrawalQueue: PendingWithdrawal[] = [];
 
@@ -255,6 +285,8 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     const maturedTotal = maturedPrincipal + maturedRewards;
     const maturedApy = maturedWeightedApy / maturedPrincipal;
     userWithdrawableBalance += maturedTotal;
+    earnStats.maturedPrincipal += maturedPrincipal;
+    earnStats.rewardsReleased += maturedRewards;
     events.push({
       id: nextEventId,
       tick: nextTick,
@@ -342,6 +374,17 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
       const profitResult = simulateGameProfit(rngState, gameResult.game, betResult.value, normalizedConfig.houseEdgePercent);
       rngState = profitResult.seed;
       const profit = profitResult.value;
+      const currentGameStats = gameStats[gameResult.game];
+      currentGameStats.rounds += 1;
+      currentGameStats.totalBetAmount += betResult.value;
+      currentGameStats.houseNetProfit += profit;
+      if (profit > 0) {
+        currentGameStats.houseWinAmount += profit;
+        currentGameStats.houseWinRounds += 1;
+      } else {
+        currentGameStats.playerWinAmount += Math.abs(profit);
+        currentGameStats.playerWinRounds += 1;
+      }
 
       if (profit > 0) {
         const distribution = calculateGameProfitDistribution(profit, normalizedConfig);
@@ -349,6 +392,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         platformRevenue += distribution.platformCut;
         gameBankroll += distribution.gameBankrollReserve;
         bonusPool += distribution.bonusPoolCut;
+        earnStats.gameSubsidyIncome += distribution.bonusPoolCut;
       } else {
         gameBankroll += profit;
         userWithdrawableBalance += Math.abs(profit);
@@ -394,6 +438,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
       const capitalResult = randomRange(rngState, normalizedConfig.capitalMin, normalizedConfig.capitalMax);
       rngState = capitalResult.seed;
       platformLiquidity += capitalResult.value;
+      earnStats.totalPrincipalLocked += capitalResult.value;
       activePositions.push({
         amount: capitalResult.value,
         unlockHour: currentHours + lockHours,
@@ -417,6 +462,11 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   }
 
   const beforeRewardLockedPrincipal = sumLockedPrincipal(activePositions);
+  const externalYield = beforeRewardLockedPrincipal * (normalizedConfig.externalEarnApyPercent / 100) * (normalizedConfig.tickHours / (365 * 24));
+  if (externalYield > 0) {
+    bonusPool += externalYield;
+    earnStats.externalYieldIncome += externalYield;
+  }
   const shouldDistribute = crossedDayBoundary(previousHours, currentHours);
   if (shouldDistribute && beforeRewardLockedPrincipal > 0 && bonusPool > 0) {
     const rewardBudget = bonusPool;
@@ -431,6 +481,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     }
     bonusPool -= distributedReward;
     rewardsPaid += distributedReward;
+    earnStats.rewardsAccrued += distributedReward;
     if (distributedReward > 0) {
       events.push({
         id: nextEventId,
@@ -529,6 +580,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   }
 
   const lockedPrincipal = sumLockedPrincipal(activePositions);
+  earnStats.activeRewardAccrued = activePositions.reduce((total, position) => total + (position.rewardAccrued ?? 0), 0);
   const pendingWithdrawals = sumPendingWithdrawals(stillPending);
   const simulatedDays = currentHours / 24;
   const instantApyPercent = lockedPrincipal > 0
@@ -554,6 +606,8 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     realizedApyPercent,
     warningCount,
     playersProcessed,
+    gameStats,
+    earnStats,
   };
 
   return {
@@ -615,6 +669,47 @@ function safeNumber(value: number | undefined, fallback: number) {
 
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
+}
+
+function createEmptyGameStats(): Record<GameKey, GameStats> {
+  return {
+    coinFlip: createEmptyGameStat(),
+    dice: createEmptyGameStat(),
+    luckySpin: createEmptyGameStat(),
+  };
+}
+
+function createEmptyGameStat(): GameStats {
+  return {
+    rounds: 0,
+    totalBetAmount: 0,
+    houseNetProfit: 0,
+    houseWinAmount: 0,
+    playerWinAmount: 0,
+    houseWinRounds: 0,
+    playerWinRounds: 0,
+  };
+}
+
+function cloneGameStats(stats: Record<GameKey, GameStats>): Record<GameKey, GameStats> {
+  return {
+    coinFlip: { ...stats.coinFlip },
+    dice: { ...stats.dice },
+    luckySpin: { ...stats.luckySpin },
+  };
+}
+
+function createEmptyEarnStats(initialBonusPool = 0): EarnStats {
+  return {
+    initialBonusPool,
+    totalPrincipalLocked: 0,
+    maturedPrincipal: 0,
+    externalYieldIncome: 0,
+    gameSubsidyIncome: 0,
+    rewardsAccrued: 0,
+    rewardsReleased: 0,
+    activeRewardAccrued: 0,
+  };
 }
 
 function normalizeSeed(seed: number) {

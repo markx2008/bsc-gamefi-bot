@@ -41,13 +41,13 @@ function findEffect(event, label) {
 
 {
   const config = getDefaultSimulatorConfig();
-  assert.equal(config.gameBankrollReservePercent, 20);
+  assert.equal(config.gameBankrollReservePercent, 90);
   assert.equal(config.stakingPeriodRewardCapPercent, 10);
   const distribution = calculateGameProfitDistribution(100, config);
 
-  almostEqual(distribution.platformCut, 10);
-  almostEqual(distribution.gameBankrollReserve, 20);
-  almostEqual(distribution.bonusPoolCut, 70);
+  almostEqual(distribution.platformCut, 5);
+  almostEqual(distribution.gameBankrollReserve, 90);
+  almostEqual(distribution.bonusPoolCut, 5);
 }
 
 {
@@ -59,6 +59,7 @@ function findEffect(event, label) {
     playerArrivalMax: 0,
     tickHours: 24,
     stakingPeriodRewardCapPercent: 10,
+    externalEarnApyPercent: 0,
   };
   let state = createInitialSimulatorState(config);
   state = {
@@ -142,6 +143,7 @@ function findEffect(event, label) {
     gameTrafficPercent: 0,
     stakingTrafficPercent: 100,
     tickHours: 24,
+    externalEarnApyPercent: 0,
   };
   const result = runSimulation(config, 10);
 
@@ -158,6 +160,7 @@ function findEffect(event, label) {
     stakingTrafficPercent: 0,
     playerArrivalMin: 4,
     playerArrivalMax: 4,
+    gameBankrollReservePercent: 20,
   };
   const ten = runSimulation({ ...base, platformFeePercent: 10 }, 300).summary;
   const twenty = runSimulation({ ...base, platformFeePercent: 20 }, 300).summary;
@@ -190,6 +193,38 @@ function findEffect(event, label) {
   almostEqual(state.summary.gameBankroll, 913);
   almostEqual(state.summary.userWithdrawableBalance, 87);
   almostEqual(state.summary.platformLiquidity, 1000);
+  almostEqual(state.summary.gameStats.coinFlip.rounds, 1);
+  almostEqual(state.summary.gameStats.coinFlip.totalBetAmount, 100);
+  almostEqual(state.summary.gameStats.coinFlip.houseNetProfit, -87);
+  almostEqual(state.summary.gameStats.coinFlip.playerWinAmount, 87);
+  almostEqual(state.summary.gameStats.coinFlip.houseWinAmount, 0);
+  almostEqual(state.summary.gameStats.coinFlip.playerWinRounds, 1);
+  almostEqual(state.summary.gameStats.coinFlip.houseWinRounds, 0);
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
+    seed: 1,
+    initialGameBankroll: 1000,
+    initialBonusPool: 0,
+    playerArrivalMin: 1,
+    playerArrivalMax: 1,
+    gameTrafficPercent: 100,
+    stakingTrafficPercent: 0,
+    coinFlipPercent: 100,
+    dicePercent: 0,
+    luckySpinPercent: 0,
+    betSizeMin: 100,
+    betSizeMax: 100,
+    withdrawalRequestPercent: 0,
+    platformFeePercent: 5,
+    gameBankrollReservePercent: 90,
+  };
+  const state = stepSimulator(config, createInitialSimulatorState(config));
+
+  almostEqual(state.summary.earnStats.gameSubsidyIncome, 4.65);
+  almostEqual(state.summary.earnStats.gameSubsidyIncome - state.summary.earnStats.rewardsAccrued, 4.65);
 }
 
 {
@@ -234,6 +269,8 @@ function findEffect(event, label) {
 
   almostEqual(state.summary.lockedPrincipal, 0);
   almostEqual(state.summary.userWithdrawableBalance, 110);
+  almostEqual(state.summary.earnStats.maturedPrincipal, 100);
+  almostEqual(state.summary.earnStats.rewardsReleased, 10);
 
   const matureEvent = state.events.find((event) => event.type === "mature");
   assert.ok(matureEvent, "maturity should create an event");
@@ -249,6 +286,7 @@ function findEffect(event, label) {
     playerArrivalMin: 0,
     playerArrivalMax: 0,
     tickHours: 1,
+    externalEarnApyPercent: 0,
   };
   let state = createInitialSimulatorState(config);
   state = {
@@ -272,6 +310,7 @@ function findEffect(event, label) {
     playerArrivalMin: 0,
     playerArrivalMax: 0,
     tickHours: 1,
+    externalEarnApyPercent: 0,
   };
   const state = stepSimulator(config, createInitialSimulatorState(config));
 
@@ -287,6 +326,7 @@ function findEffect(event, label) {
     playerArrivalMin: 0,
     playerArrivalMax: 0,
     tickHours: 24,
+    externalEarnApyPercent: 0,
   };
   let state = createInitialSimulatorState(config);
   state = {
@@ -417,6 +457,8 @@ function findEffect(event, label) {
   assert.ok(stakeEvent, "staking should create an event");
   assert.ok(findEffect(stakeEvent, "鎖倉本金").amount > 0);
   assert.ok(findEffect(stakeEvent, "平台流動性").amount > 0);
+  almostEqual(state.summary.earnStats.totalPrincipalLocked, findEffect(stakeEvent, "鎖倉本金").amount);
+  almostEqual(state.summary.earnStats.activeRewardAccrued, 0);
 }
 
 console.log("Simulator engine verification passed");

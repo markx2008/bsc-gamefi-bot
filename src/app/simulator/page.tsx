@@ -21,14 +21,19 @@ import {
   runSimulation,
   stepSimulator,
   sweepPlatformFees,
+  type GameKey,
   type SimulatorConfig,
   type SimulatorEvent,
-  type SimulatorHistoryPoint,
   type SimulatorState,
 } from "@/lib/simulator";
 
 const DEFAULT_CONFIG = getDefaultSimulatorConfig();
 const FEE_SWEEP_VALUES = [5, 10, 15, 20, 25, 30];
+const GAME_STAT_ITEMS: { key: GameKey; label: string }[] = [
+  { key: "coinFlip", label: "猜硬幣" },
+  { key: "dice", label: "骰子" },
+  { key: "luckySpin", label: "幸運轉盤" },
+];
 
 function formatMoney(value: number) {
   return value.toLocaleString("en-US", {
@@ -115,11 +120,30 @@ export default function SimulatorPage() {
   const earnPoolPercent = Math.max(0, 100 - safeConfig.platformFeePercent - safeConfig.gameBankrollReservePercent);
   const platformFundsTotal = summary.gameBankroll + summary.platformRevenue + summary.bonusPool;
   const userFundsTotal = summary.lockedPrincipal + summary.userWithdrawableBalance;
+  const gameTotals = GAME_STAT_ITEMS.reduce((totals, game) => {
+    const stats = summary.gameStats[game.key];
+    totals.rounds += stats.rounds;
+    totals.totalBetAmount += stats.totalBetAmount;
+    totals.houseNetProfit += stats.houseNetProfit;
+    totals.houseWinAmount += stats.houseWinAmount;
+    totals.playerWinAmount += stats.playerWinAmount;
+    totals.houseWinRounds += stats.houseWinRounds;
+    totals.playerWinRounds += stats.playerWinRounds;
+    return totals;
+  }, {
+    rounds: 0,
+    totalBetAmount: 0,
+    houseNetProfit: 0,
+    houseWinAmount: 0,
+    playerWinAmount: 0,
+    houseWinRounds: 0,
+    playerWinRounds: 0,
+  });
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-5 sm:px-6 lg:px-8">
-        <header className="flex flex-col gap-4 border-b border-zinc-800 pb-4 lg:flex-row lg:items-center lg:justify-between">
+      <div className="mx-auto flex w-full max-w-[1880px] flex-col gap-4 px-4 py-4 sm:px-6 2xl:px-8">
+        <header className="flex flex-col gap-4 border-b border-zinc-800 pb-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <p className="text-sm font-medium text-emerald-400">BSC GameFi 試算</p>
             <h1 className="mt-1 text-2xl font-semibold tracking-normal text-white md:text-3xl">三遊戲與收益寶池子模擬</h1>
@@ -141,7 +165,7 @@ export default function SimulatorPage() {
           </div>
         </header>
 
-        <section className="grid gap-3 xl:grid-cols-2">
+        <section className="grid gap-3 xl:grid-cols-[minmax(0,1.35fr)_minmax(340px,0.75fr)_minmax(340px,0.75fr)]">
           <MetricGroup title="帳面平台資金" total={`$${formatMoney(platformFundsTotal)}`} detail="遊戲金庫 + 平台收益 + 收益寶獎金池">
             <Metric
               label="遊戲金庫"
@@ -151,64 +175,73 @@ export default function SimulatorPage() {
             />
             <Metric label="平台收益" value={`$${formatMoney(summary.platformRevenue)}`} detail={`${safeConfig.platformFeePercent}% 遊戲正利潤抽成`} tone="sky" />
             <Metric label="收益寶獎金池" value={`$${formatMoney(summary.bonusPool)}`} detail="未分配與上限保留資金" tone="green" />
-            <Metric label="平台流動性" value={`$${formatMoney(summary.platformLiquidity)}`} detail="實際提款支付扣這裡" tone={summary.platformLiquidity < summary.withdrawalShortfall ? "amber" : "green"} />
           </MetricGroup>
 
           <MetricGroup title="用戶資金" total={`$${formatMoney(userFundsTotal)}`} detail="鎖倉本金 + 非鎖倉可提款">
             <Metric label="鎖倉本金" value={`$${formatMoney(summary.lockedPrincipal)}`} detail={`${safeConfig.stakingLockDays} 天 active principal`} />
             <Metric label="非鎖倉可提款" value={`$${formatMoney(summary.userWithdrawableBalance)}`} detail="到期本金、玩家淨贏與已發分紅" tone="sky" />
           </MetricGroup>
+
+          <MetricGroup title="運行狀態" total={`T+${summary.tick}`} detail={`${formatPercent(summary.simulatedDays)} 天 / ${summary.playersProcessed} players`}>
+            <Metric label="可用現金" value={`$${formatMoney(summary.platformLiquidity)}`} detail="平台錢包現金餘額" tone={summary.platformLiquidity < summary.withdrawalShortfall ? "amber" : "green"} />
+            <Metric label="待處理提款" value={`$${formatMoney(summary.pendingWithdrawals)}`} detail={`${safeConfig.withdrawalApprovalDelayHours} 小時審核延遲`} tone="amber" />
+            <Metric label="逾期未付提款" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail="尚未補付的提款負債" tone={summary.withdrawalShortfall > 0 ? "red" : "neutral"} />
+            <Metric label="即時 APY" value={`${formatPercent(summary.instantApyPercent)}%`} detail={apyHealthy ? "高於健康門檻" : `低於 ${safeConfig.healthyApyPercent}% 門檻`} tone={apyHealthy ? "green" : "amber"} />
+          </MetricGroup>
         </section>
 
-        <section className="grid gap-3 md:grid-cols-3">
-          <Metric label="待處理提款" value={`$${formatMoney(summary.pendingWithdrawals)}`} detail={`${safeConfig.withdrawalApprovalDelayHours} 小時審核延遲`} tone="amber" />
-          <Metric label="逾期未付提款" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail="尚未補付的提款負債" tone={summary.withdrawalShortfall > 0 ? "red" : "neutral"} />
-          <Metric label="即時 APY" value={`${formatPercent(summary.instantApyPercent)}%`} detail={apyHealthy ? "高於健康門檻" : `低於 ${safeConfig.healthyApyPercent}% 門檻`} tone={apyHealthy ? "green" : "amber"} />
-        </section>
-
-        <section className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <Panel title="參數" icon={<Settings2 size={18} />}>
-            <div className="grid gap-4">
-              <NumberField label="Seed" value={safeConfig.seed} min={1} max={99999} step={1} onChange={(value) => updateConfig({ seed: value })} />
-              <NumberField label="每輪最少新玩家" value={safeConfig.playerArrivalMin} min={0} max={50} step={1} onChange={(value) => updateConfig({ playerArrivalMin: value })} />
-              <NumberField label="每輪最多新玩家" value={safeConfig.playerArrivalMax} min={0} max={80} step={1} onChange={(value) => updateConfig({ playerArrivalMax: value })} />
-              <RangeField label="跑速" value={ticksPerFrame} min={1} max={20} step={1} suffix="輪/刷新" onChange={setTicksPerFrame} />
-              <RangeField label="進遊戲比例" value={safeConfig.gameTrafficPercent} min={0} max={100} step={5} suffix="%" onChange={setGameTraffic} />
-              <ReadOnlyRow label="進收益寶比例" value={`${safeConfig.stakingTrafficPercent}%`} />
-              <RangeField label="平台收益比例" value={safeConfig.platformFeePercent} min={0} max={100} step={1} suffix="%" onChange={setPlatformFeePercent} />
-              <RangeField label="遊戲金庫保留比例" value={safeConfig.gameBankrollReservePercent} min={0} max={100 - safeConfig.platformFeePercent} step={1} suffix="%" onChange={setGameBankrollReservePercent} />
-              <ReadOnlyRow label="收益寶獎金池比例" value={`${earnPoolPercent}%`} />
-              <ReadOnlyRow label="正利潤分配合計" value={`${safeConfig.platformFeePercent + safeConfig.gameBankrollReservePercent + earnPoolPercent}%`} />
-              <RangeField label="單期收益上限" value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={100} step={1} suffix="%" onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
-              <RangeField label="莊家優勢" value={safeConfig.houseEdgePercent} min={0} max={8} step={0.5} suffix="%" onChange={(value) => updateConfig({ houseEdgePercent: value })} />
-              <RangeField label="健康 APY 門檻" value={safeConfig.healthyApyPercent} min={0} max={80} step={1} suffix="%" onChange={(value) => updateConfig({ healthyApyPercent: value })} />
-              <RangeField label="每輪提款申請比例" value={safeConfig.withdrawalRequestPercent} min={0} max={100} step={1} suffix="%" onChange={(value) => updateConfig({ withdrawalRequestPercent: value })} />
-              <NumberField label="提款審核延遲小時" value={safeConfig.withdrawalApprovalDelayHours} min={0} max={168} step={1} onChange={(value) => updateConfig({ withdrawalApprovalDelayHours: value })} />
-            </div>
-          </Panel>
-
-          <div className="grid gap-4">
-            <Panel title="池子走勢" icon={<Activity size={18} />}>
-              <div className="grid gap-4 lg:grid-cols-2">
-                <LineChart title="遊戲金庫 / 收益寶獎金池" history={state.history} lines={[
-                  { key: "gameBankroll", label: "遊戲金庫", color: "#38bdf8" },
-                  { key: "bonusPool", label: "獎金池", color: "#34d399" },
-                ]} />
-                <LineChart title="鎖倉本金 / 可提款 / 待提款" history={state.history} lines={[
-                  { key: "lockedPrincipal", label: "鎖倉本金", color: "#a78bfa" },
-                  { key: "userWithdrawableBalance", label: "可提款", color: "#38bdf8" },
-                  { key: "pendingWithdrawals", label: "待提款", color: "#fbbf24" },
-                ]} />
-                <LineChart title="平台收益 / 流動性 / 逾期未付提款" history={state.history} lines={[
-                  { key: "platformRevenue", label: "平台收益", color: "#fbbf24" },
-                  { key: "platformLiquidity", label: "平台流動性", color: "#22c55e" },
-                  { key: "withdrawalShortfall", label: "逾期未付", color: "#f87171" },
-                ]} />
-                <LineChart title="即時 APY / 實現 APY" history={state.history} lines={[
-                  { key: "instantApyPercent", label: "即時 APY", color: "#34d399" },
-                  { key: "realizedApyPercent", label: "實現 APY", color: "#a78bfa" },
-                ]} />
+        <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_420px]">
+          <div className="grid content-start gap-4">
+            <Panel title="參數" icon={<Settings2 size={18} />}>
+              <div className="grid gap-4">
+                <NumberField label="Seed" value={safeConfig.seed} min={1} max={99999} step={1} onChange={(value) => updateConfig({ seed: value })} />
+                <NumberField label="每輪最少新玩家" value={safeConfig.playerArrivalMin} min={0} max={50} step={1} onChange={(value) => updateConfig({ playerArrivalMin: value })} />
+                <NumberField label="每輪最多新玩家" value={safeConfig.playerArrivalMax} min={0} max={80} step={1} onChange={(value) => updateConfig({ playerArrivalMax: value })} />
+                <RangeField label="跑速" value={ticksPerFrame} min={1} max={200} step={1} suffix="輪/刷新" onChange={setTicksPerFrame} />
+                <RangeField label="進遊戲比例" value={safeConfig.gameTrafficPercent} min={0} max={100} step={5} suffix="%" onChange={setGameTraffic} />
+                <ReadOnlyRow label="進收益寶比例" value={`${safeConfig.stakingTrafficPercent}%`} />
+                <RangeField label="平台收益比例" value={safeConfig.platformFeePercent} min={0} max={100} step={1} suffix="%" onChange={setPlatformFeePercent} />
+                <RangeField label="遊戲金庫保留比例" value={safeConfig.gameBankrollReservePercent} min={0} max={100 - safeConfig.platformFeePercent} step={1} suffix="%" onChange={setGameBankrollReservePercent} />
+                <ReadOnlyRow label="收益寶獎金池比例" value={`${earnPoolPercent}%`} />
+                <ReadOnlyRow label="正利潤分配合計" value={`${safeConfig.platformFeePercent + safeConfig.gameBankrollReservePercent + earnPoolPercent}%`} />
+                <RangeField label="單期收益上限" value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={10} step={0.01} suffix="%" onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
+                <NumberField label="單期收益上限輸入" value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={10} step={0.01} onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
+                <ReadOnlyRow label="單期上限年化" value={`APY：${formatPercent(safeConfig.stakingPeriodRewardCapPercent * (365 / Math.max(safeConfig.stakingLockDays, 1 / 24)))}%`} />
+                <RangeField label="外部鎖倉 APY" value={safeConfig.externalEarnApyPercent} min={0} max={80} step={0.5} suffix="%" onChange={(value) => updateConfig({ externalEarnApyPercent: value })} />
+                <RangeField label="莊家優勢" value={safeConfig.houseEdgePercent} min={0} max={8} step={0.5} suffix="%" onChange={(value) => updateConfig({ houseEdgePercent: value })} />
+                <RangeField label="健康 APY 門檻" value={safeConfig.healthyApyPercent} min={0} max={80} step={1} suffix="%" onChange={(value) => updateConfig({ healthyApyPercent: value })} />
+                <RangeField label="每輪提款申請比例" value={safeConfig.withdrawalRequestPercent} min={0} max={100} step={1} suffix="%" onChange={(value) => updateConfig({ withdrawalRequestPercent: value })} />
+                <NumberField label="提款審核延遲小時" value={safeConfig.withdrawalApprovalDelayHours} min={0} max={168} step={1} onChange={(value) => updateConfig({ withdrawalApprovalDelayHours: value })} />
               </div>
+            </Panel>
+
+            <Panel title="遊戲與本金設定" icon={<Vault size={18} />}>
+              <div className="grid gap-4">
+                <RangeField label="猜硬幣比例" value={safeConfig.coinFlipPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ coinFlipPercent: value })} />
+                <RangeField label="骰子比例" value={safeConfig.dicePercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ dicePercent: value })} />
+                <RangeField label="幸運轉盤比例" value={safeConfig.luckySpinPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ luckySpinPercent: value })} />
+                <NumberField label="玩家本金下限" value={safeConfig.capitalMin} min={0} max={10000} step={10} onChange={(value) => updateConfig({ capitalMin: value })} />
+                <NumberField label="玩家本金上限" value={safeConfig.capitalMax} min={0} max={20000} step={10} onChange={(value) => updateConfig({ capitalMax: value })} />
+                <NumberField label="下注下限" value={safeConfig.betSizeMin} min={0} max={1000} step={1} onChange={(value) => updateConfig({ betSizeMin: value })} />
+                <NumberField label="下注上限" value={safeConfig.betSizeMax} min={0} max={5000} step={1} onChange={(value) => updateConfig({ betSizeMax: value })} />
+                <ReadOnlyRow label="已支付提款" value={`$${formatMoney(summary.withdrawalsPaid)}`} />
+                <ReadOnlyRow label="實現 APY" value={`${formatPercent(summary.realizedApyPercent)}%`} />
+              </div>
+            </Panel>
+          </div>
+
+          <div className="grid min-w-0 content-start gap-4">
+            <Panel title="遊戲輸贏" icon={<BarChart3 size={18} />}>
+              <GameTotalRow totals={gameTotals} />
+              <div className="grid gap-3 lg:grid-cols-3">
+                {GAME_STAT_ITEMS.map((game) => (
+                  <GameStatCard game={game.label} stats={summary.gameStats[game.key]} key={game.key} />
+                ))}
+              </div>
+            </Panel>
+
+            <Panel title="收益寶盈虧" icon={<Vault size={18} />}>
+              <EarnStatsPanel stats={summary.earnStats} bonusPool={summary.bonusPool} lockedPrincipal={summary.lockedPrincipal} />
             </Panel>
 
             <Panel title="費率最佳化" icon={<BarChart3 size={18} />}>
@@ -267,25 +300,9 @@ export default function SimulatorPage() {
               </div>
             </Panel>
           </div>
-        </section>
 
-        <section className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <Panel title="遊戲與本金設定" icon={<Vault size={18} />}>
-            <div className="grid gap-4">
-              <RangeField label="猜硬幣比例" value={safeConfig.coinFlipPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ coinFlipPercent: value })} />
-              <RangeField label="骰子比例" value={safeConfig.dicePercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ dicePercent: value })} />
-              <RangeField label="幸運轉盤比例" value={safeConfig.luckySpinPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ luckySpinPercent: value })} />
-              <NumberField label="玩家本金下限" value={safeConfig.capitalMin} min={0} max={10000} step={10} onChange={(value) => updateConfig({ capitalMin: value })} />
-              <NumberField label="玩家本金上限" value={safeConfig.capitalMax} min={0} max={20000} step={10} onChange={(value) => updateConfig({ capitalMax: value })} />
-              <NumberField label="下注下限" value={safeConfig.betSizeMin} min={0} max={1000} step={1} onChange={(value) => updateConfig({ betSizeMin: value })} />
-              <NumberField label="下注上限" value={safeConfig.betSizeMax} min={0} max={5000} step={1} onChange={(value) => updateConfig({ betSizeMax: value })} />
-              <ReadOnlyRow label="已支付提款" value={`$${formatMoney(summary.withdrawalsPaid)}`} />
-              <ReadOnlyRow label="實現 APY" value={`${formatPercent(summary.realizedApyPercent)}%`} />
-            </div>
-          </Panel>
-
-          <Panel title="事件流" icon={<Activity size={18} />}>
-            <div className="grid gap-2">
+          <Panel className="xl:col-span-2 2xl:sticky 2xl:top-4 2xl:col-span-1 2xl:max-h-[calc(100vh-2rem)] 2xl:overflow-hidden" title="事件流" icon={<Activity size={18} />}>
+            <div className="grid gap-2 2xl:max-h-[calc(100vh-8rem)] 2xl:overflow-y-auto 2xl:pr-1">
               {state.events.length ? state.events.map((event) => <EventRow event={event} key={event.id} />) : (
                 <div className="rounded-lg border border-dashed border-zinc-800 bg-zinc-950 p-8 text-center text-sm text-zinc-500">
                   點「開始」或「跑一輪」後，這裡會顯示隨機玩家、遊戲輸贏、收益寶加入與分紅事件。
@@ -299,9 +316,99 @@ export default function SimulatorPage() {
   );
 }
 
-function Panel({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) {
+function GameStatCard({ game, stats }: { game: string; stats: SimulatorState["summary"]["gameStats"][GameKey] }) {
+  const averageBet = stats.rounds > 0 ? stats.totalBetAmount / stats.rounds : 0;
+  const netTone = stats.houseNetProfit >= 0 ? "text-emerald-300" : "text-red-300";
+  const netPrefix = stats.houseNetProfit >= 0 ? "+" : "-";
+
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-sm font-medium text-zinc-100">{game}</p>
+          <p className="mt-1 text-xs text-zinc-500">{stats.rounds} 局 / 平均下注 ${formatMoney(averageBet)}</p>
+        </div>
+        <p className={`font-mono text-lg font-semibold ${netTone}`}>{netPrefix}${formatMoney(Math.abs(stats.houseNetProfit))}</p>
+      </div>
+      <div className="mt-4 grid grid-cols-2 gap-2 text-xs">
+        <StatPill label="下注總額" value={`$${formatMoney(stats.totalBetAmount)}`} />
+        <StatPill label="莊家淨輸贏" value={`${netPrefix}$${formatMoney(Math.abs(stats.houseNetProfit))}`} valueClass={netTone} />
+        <StatPill label="莊家贏局" value={`${stats.houseWinRounds} 局`} />
+        <StatPill label="玩家贏局" value={`${stats.playerWinRounds} 局`} />
+        <StatPill label="莊家吃掉" value={`$${formatMoney(stats.houseWinAmount)}`} valueClass="text-emerald-300" />
+        <StatPill label="玩家贏走" value={`$${formatMoney(stats.playerWinAmount)}`} valueClass="text-red-300" />
+      </div>
+    </div>
+  );
+}
+
+function GameTotalRow({ totals }: { totals: SimulatorState["summary"]["gameStats"][GameKey] }) {
+  const averageBet = totals.rounds > 0 ? totals.totalBetAmount / totals.rounds : 0;
+  const netTone = totals.houseNetProfit >= 0 ? "text-emerald-300" : "text-red-300";
+  const netPrefix = totals.houseNetProfit >= 0 ? "+" : "-";
+
+  return (
+    <div className="mb-3 grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 p-4 md:grid-cols-4">
+      <StatPill label="總局數" value={`${totals.rounds} 局`} />
+      <StatPill label="總下注" value={`$${formatMoney(totals.totalBetAmount)}`} />
+      <StatPill label="平均下注" value={`$${formatMoney(averageBet)}`} />
+      <StatPill label="莊家總淨輸贏" value={`${netPrefix}$${formatMoney(Math.abs(totals.houseNetProfit))}`} valueClass={netTone} />
+      <StatPill label="莊家贏局" value={`${totals.houseWinRounds} 局`} />
+      <StatPill label="玩家贏局" value={`${totals.playerWinRounds} 局`} />
+      <StatPill label="莊家吃掉總額" value={`$${formatMoney(totals.houseWinAmount)}`} valueClass="text-emerald-300" />
+      <StatPill label="玩家贏走總額" value={`$${formatMoney(totals.playerWinAmount)}`} valueClass="text-red-300" />
+    </div>
+  );
+}
+
+function EarnStatsPanel({ stats, bonusPool, lockedPrincipal }: { stats: SimulatorState["summary"]["earnStats"]; bonusPool: number; lockedPrincipal: number }) {
+  const userProfit = stats.rewardsReleased + stats.activeRewardAccrued;
+  const selfProfit = stats.externalYieldIncome - stats.rewardsAccrued;
+  const subsidyProfit = stats.externalYieldIncome + stats.gameSubsidyIncome - stats.rewardsAccrued;
+  const fullyFundedProfit = stats.initialBonusPool + subsidyProfit;
+  const principalReturnedRate = stats.totalPrincipalLocked > 0
+    ? (stats.maturedPrincipal / stats.totalPrincipalLocked) * 100
+    : 0;
+
+  return (
+    <div className="grid gap-3 md:grid-cols-4">
+      <SignedStatPill label="自身盈虧" value={selfProfit} />
+      <SignedStatPill label="含遊戲補貼盈虧" value={subsidyProfit} />
+      <SignedStatPill label="含初始補貼盈虧" value={fullyFundedProfit} />
+      <StatPill label="外部收益收入" value={`$${formatMoney(stats.externalYieldIncome)}`} valueClass="text-emerald-300" />
+      <StatPill label="遊戲補貼收入" value={`$${formatMoney(stats.gameSubsidyIncome)}`} valueClass="text-sky-300" />
+      <StatPill label="初始補貼" value={`$${formatMoney(stats.initialBonusPool)}`} valueClass="text-sky-300" />
+      <StatPill label="本金流入" value={`$${formatMoney(stats.totalPrincipalLocked)}`} />
+      <StatPill label="目前鎖倉" value={`$${formatMoney(lockedPrincipal)}`} />
+      <StatPill label="到期本金" value={`$${formatMoney(stats.maturedPrincipal)}`} />
+      <StatPill label="本金到期率" value={`${formatPercent(principalReturnedRate)}%`} />
+      <StatPill label="累積分紅" value={`$${formatMoney(stats.rewardsAccrued)}`} valueClass="text-emerald-300" />
+      <StatPill label="已釋放分紅" value={`$${formatMoney(stats.rewardsReleased)}`} valueClass="text-emerald-300" />
+      <StatPill label="待到期分紅" value={`$${formatMoney(stats.activeRewardAccrued)}`} valueClass="text-amber-300" />
+      <StatPill label="用戶淨收益" value={`+$${formatMoney(userProfit)}`} valueClass="text-emerald-300" />
+      <StatPill label="獎金池餘額" value={`$${formatMoney(bonusPool)}`} valueClass="text-sky-300" />
+    </div>
+  );
+}
+
+function SignedStatPill({ label, value }: { label: string; value: number }) {
+  const tone = value >= 0 ? "text-emerald-300" : "text-red-300";
+  const prefix = value >= 0 ? "+" : "-";
+  return <StatPill label={label} value={`${prefix}$${formatMoney(Math.abs(value))}`} valueClass={tone} />;
+}
+
+function StatPill({ label, value, valueClass = "text-zinc-100" }: { label: string; value: string; valueClass?: string }) {
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-900 px-3 py-2">
+      <p className="text-zinc-500">{label}</p>
+      <p className={`mt-1 font-mono ${valueClass}`}>{value}</p>
+    </div>
+  );
+}
+
+function Panel({ title, icon, children, className = "" }: { title: string; icon: React.ReactNode; children: React.ReactNode; className?: string }) {
+  return (
+    <section className={`rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 ${className}`}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <h2 className="text-base font-semibold text-white">{title}</h2>
         <span className="text-zinc-500">{icon}</span>
@@ -338,9 +445,9 @@ function Metric({ label, value, detail, tone = "neutral" }: { label: string; val
   }[tone];
 
   return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-4">
+    <div className="min-w-0 rounded-lg border border-zinc-800 bg-zinc-900/70 p-3">
       <p className="text-sm text-zinc-400">{label}</p>
-      <p className={`mt-2 text-2xl font-semibold ${toneClass}`}>{value}</p>
+      <p className={`mt-2 truncate text-xl font-semibold 2xl:text-2xl ${toneClass}`}>{value}</p>
       <p className="mt-1 text-xs text-zinc-500">{detail}</p>
     </div>
   );
@@ -393,59 +500,15 @@ function CompareTile({ label, value }: { label: string; value: string }) {
   );
 }
 
-function LineChart({ title, history, lines }: { title: string; history: SimulatorHistoryPoint[]; lines: { key: keyof SimulatorHistoryPoint; label: string; color: string }[] }) {
-  const width = 640;
-  const height = 220;
-  const padding = 20;
-  const values = history.flatMap((point) => lines.map((line) => Number(point[line.key])));
-  const min = Math.min(0, ...values);
-  const max = Math.max(1, ...values);
-  const span = max - min || 1;
-
-  function pathFor(key: keyof SimulatorHistoryPoint) {
-    if (history.length < 2) return "";
-    return history.map((point, index) => {
-      const x = padding + (index / (history.length - 1)) * (width - padding * 2);
-      const y = height - padding - ((Number(point[key]) - min) / span) * (height - padding * 2);
-      return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
-    }).join(" ");
-  }
-
-  return (
-    <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <h3 className="text-sm font-semibold text-zinc-100">{title}</h3>
-        <div className="flex flex-wrap gap-3">
-          {lines.map((line) => (
-            <span className="inline-flex items-center gap-1 text-xs text-zinc-500" key={line.key}>
-              <span className="h-2 w-2 rounded-full" style={{ backgroundColor: line.color }} />
-              {line.label}
-            </span>
-          ))}
-        </div>
-      </div>
-      <svg className="h-[220px] w-full" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={title}>
-        <line x1={padding} x2={width - padding} y1={height - padding} y2={height - padding} stroke="#27272a" />
-        <line x1={padding} x2={padding} y1={padding} y2={height - padding} stroke="#27272a" />
-        {history.length < 2 ? (
-          <text x={width / 2} y={height / 2} textAnchor="middle" fill="#71717a" fontSize="14">等待模擬資料</text>
-        ) : lines.map((line) => (
-          <path d={pathFor(line.key)} fill="none" stroke={line.color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" key={line.key} />
-        ))}
-      </svg>
-    </div>
-  );
-}
-
 function EventRow({ event }: { event: SimulatorEvent }) {
   return (
-    <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 sm:grid-cols-[88px_1fr_minmax(180px,280px)] sm:items-center">
+    <div className="grid gap-3 rounded-lg border border-zinc-800 bg-zinc-950 px-4 py-3 sm:grid-cols-[88px_1fr_minmax(180px,280px)] sm:items-center 2xl:grid-cols-1 2xl:items-start">
       <span className="font-mono text-xs text-zinc-500">T+{event.tick}</span>
       <div>
         <p className="text-sm font-medium text-zinc-100">{event.title}</p>
         <p className="mt-1 text-xs text-zinc-500">{event.detail}</p>
       </div>
-      <div className="flex flex-wrap justify-start gap-2 sm:justify-end">
+      <div className="flex flex-wrap justify-start gap-2 sm:justify-end 2xl:justify-start">
         {event.effects.map((effect) => {
           const isNegative = effect.amount < 0;
           const amountClass = isNegative ? "text-red-300" : "text-emerald-300";
