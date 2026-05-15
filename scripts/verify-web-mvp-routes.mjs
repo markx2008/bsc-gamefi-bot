@@ -57,6 +57,12 @@ assertIncludes(homePage, "/api/auth/dev-login", "web dashboard");
 assertIncludes(homePage, "/api/me", "web dashboard");
 assertIncludes(homePage, "/api/withdrawals", "web dashboard");
 assertIncludes(homePage, "VaultManager", "web dashboard");
+assertIncludes(homePage, "encodeFunctionData", "deposit panel");
+assertIncludes(homePage, "approveDeposit", "deposit panel");
+assertIncludes(homePage, "submitDeposit", "deposit panel");
+assertIncludes(homePage, "MockUSDT balance", "deposit panel");
+assertIncludes(homePage, "Allowance", "deposit panel");
+assertIncludes(homePage, "VaultManager.deposit", "deposit panel");
 
 const adminPage = read("src/app/admin/page.tsx");
 assertIncludes(adminPage, "/api/admin/overview", "admin dashboard");

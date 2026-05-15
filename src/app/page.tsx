@@ -3,6 +3,7 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { ArrowDownToLine, ExternalLink, KeyRound, Loader2, Shield, Wallet } from "lucide-react";
 import Link from "next/link";
+import { encodeFunctionData, formatUnits, parseAbi, parseUnits } from "viem";
 
 type UserState = {
   id: number;
@@ -43,6 +44,16 @@ type MeResponse = {
   };
 };
 
+const ERC20_ABI = parseAbi([
+  "function balanceOf(address account) view returns (uint256)",
+  "function allowance(address owner, address spender) view returns (uint256)",
+  "function approve(address spender, uint256 amount) returns (bool)",
+]);
+
+const VAULT_ABI = parseAbi([
+  "function deposit(uint256 amount)",
+]);
+
 declare global {
   interface Window {
     ethereum?: {
@@ -52,6 +63,7 @@ declare global {
 }
 
 const TOKEN_KEY = "web_mvp_session_token";
+const TOKEN_DECIMALS = 18;
 
 function formatUsdt(value: string | number | null | undefined) {
   const numeric = Number(value ?? 0);
@@ -80,6 +92,10 @@ export default function WebValidationDashboard() {
   const [tgId, setTgId] = useState("test_user_001");
   const [data, setData] = useState<MeResponse | null>(null);
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [depositAmount, setDepositAmount] = useState("");
+  const [tokenBalance, setTokenBalance] = useState("0");
+  const [depositAllowance, setDepositAllowance] = useState("0");
+  const [depositTxHash, setDepositTxHash] = useState("");
   const [status, setStatus] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -101,6 +117,13 @@ export default function WebValidationDashboard() {
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.error || "Request failed");
     return payload as T;
+  }
+
+  async function walletRequest<T>(method: string, params?: unknown[]): Promise<T> {
+    if (!window.ethereum) {
+      throw new Error("MetaMask is not available in this browser.");
+    }
+    return window.ethereum.request({ method, params }) as Promise<T>;
   }
 
   async function login(role: "user" | "admin") {
@@ -131,11 +154,39 @@ export default function WebValidationDashboard() {
         headers: { Authorization: `Bearer ${activeToken}` },
       });
       setData(payload);
+      await loadTokenState(payload);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Failed to load account");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function readContractString(to: string, data: `0x${string}`) {
+    return walletRequest<string>("eth_call", [{ to, data }, "latest"]);
+  }
+
+  async function loadTokenState(snapshot = data) {
+    const walletAddress = snapshot?.user.walletAddress;
+    const usdtAddress = snapshot?.config.usdtAddress;
+    const vaultAddress = snapshot?.config.vaultAddress;
+    if (!walletAddress || !usdtAddress || !vaultAddress || !window.ethereum) return;
+
+    const [balanceHex, allowanceHex] = await Promise.all([
+      readContractString(usdtAddress, encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "balanceOf",
+        args: [walletAddress as `0x${string}`],
+      })),
+      readContractString(usdtAddress, encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "allowance",
+        args: [walletAddress as `0x${string}`, vaultAddress as `0x${string}`],
+      })),
+    ]);
+
+    setTokenBalance(formatUnits(BigInt(balanceHex), TOKEN_DECIMALS));
+    setDepositAllowance(formatUnits(BigInt(allowanceHex), TOKEN_DECIMALS));
   }
 
   async function bindWallet() {
@@ -171,6 +222,66 @@ export default function WebValidationDashboard() {
       await loadMe();
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Wallet binding failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function sendWalletTransaction(to: string, data: `0x${string}`) {
+    const accounts = await walletRequest<string[]>("eth_requestAccounts");
+    const from = accounts[0];
+    if (!from) throw new Error("No wallet account selected in MetaMask.");
+    return walletRequest<string>("eth_sendTransaction", [{ from, to, data }]);
+  }
+
+  async function approveDeposit() {
+    const usdtAddress = data?.config.usdtAddress;
+    const vaultAddress = data?.config.vaultAddress;
+    if (!usdtAddress || !vaultAddress) {
+      setStatus("USDT_ADDRESS and VAULT_ADDRESS are required before approval.");
+      return;
+    }
+
+    setLoading(true);
+    setStatus("");
+    try {
+      const amount = parseUnits(depositAmount || "0", TOKEN_DECIMALS);
+      if (amount <= 0n) throw new Error("Deposit amount must be greater than 0.");
+      const txHash = await sendWalletTransaction(usdtAddress, encodeFunctionData({
+        abi: ERC20_ABI,
+        functionName: "approve",
+        args: [vaultAddress as `0x${string}`, amount],
+      }));
+      setDepositTxHash(txHash);
+      setStatus("Approve transaction submitted. Wait for confirmation, then press Refresh token state.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Approve failed");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function submitDeposit() {
+    const vaultAddress = data?.config.vaultAddress;
+    if (!vaultAddress) {
+      setStatus("VAULT_ADDRESS is required before deposit.");
+      return;
+    }
+
+    setLoading(true);
+    setStatus("");
+    try {
+      const amount = parseUnits(depositAmount || "0", TOKEN_DECIMALS);
+      if (amount <= 0n) throw new Error("Deposit amount must be greater than 0.");
+      const txHash = await sendWalletTransaction(vaultAddress, encodeFunctionData({
+        abi: VAULT_ABI,
+        functionName: "deposit",
+        args: [amount],
+      }));
+      setDepositTxHash(txHash);
+      setStatus("VaultManager.deposit transaction submitted. Start the listener, wait for confirmations, then refresh account balance.");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "Deposit failed");
     } finally {
       setLoading(false);
     }
@@ -274,6 +385,38 @@ export default function WebValidationDashboard() {
             </p>
           </div>
 
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+            <h2 className="text-base font-semibold text-white">Deposit</h2>
+            <p className="mt-1 text-sm text-zinc-400">Approve MockUSDT, then call VaultManager.deposit. Listener credits internal balance after the chain event.</p>
+            <dl className="mt-5 space-y-3 text-sm">
+              <Row label="MockUSDT balance" value={`$${formatUsdt(tokenBalance)}`} />
+              <Row label="Allowance" value={`$${formatUsdt(depositAllowance)}`} />
+            </dl>
+            <label className="mt-5 block text-sm text-zinc-300" htmlFor="depositAmount">Amount USDT</label>
+            <input
+              id="depositAmount"
+              className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+              inputMode="decimal"
+              value={depositAmount}
+              onChange={(event) => setDepositAmount(event.target.value)}
+              placeholder="10"
+            />
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadTokenState()} disabled={!user?.walletAddress || loading}>
+                Refresh token state
+              </button>
+              <button className="inline-flex items-center gap-2 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={approveDeposit} disabled={!user?.walletAddress || loading}>
+                Approve
+              </button>
+              <button className="inline-flex items-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={submitDeposit} disabled={!user?.walletAddress || loading}>
+                VaultManager.deposit
+              </button>
+            </div>
+            {depositTxHash ? <p className="mt-4 break-all text-xs text-zinc-500">Last tx: {depositTxHash}</p> : null}
+          </div>
+        </section>
+
+        <section className="grid gap-4 lg:grid-cols-2">
           <form className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5" onSubmit={requestWithdrawal}>
             <h2 className="text-base font-semibold text-white">Withdrawal Request</h2>
             <p className="mt-1 text-sm text-zinc-400">送出後會進入 Admin 審核，pending 金額會佔用可提餘額。</p>
@@ -290,6 +433,11 @@ export default function WebValidationDashboard() {
               <ArrowDownToLine size={16} /> Submit
             </button>
           </form>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
+            <h2 className="text-base font-semibold text-white">Listener Check</h2>
+            <p className="mt-1 text-sm leading-6 text-zinc-400">After deposit, run <span className="font-mono text-zinc-200">npm run server</span>. The listener reads the Deposit event and updates DB balance. Press Refresh in the header after the listener logs success.</p>
+          </div>
         </section>
 
         <section className="grid gap-4 lg:grid-cols-2">

@@ -6,6 +6,45 @@
 
 先以 Web 端驗證資金流，確認 BSC Testnet 儲值、listener 入帳、內部餘額、提現申請與 Admin 審核流程穩定後，再回到 Telegram Bot / Telegram Mini App 整合。
 
+## 系統架構與資金流
+
+```mermaid
+flowchart LR
+  user[使用者錢包<br/>MetaMask] --> web[Web 前端<br/>Next.js]
+  admin[管理員] --> adminWeb[Admin Web]
+
+  web --> authApi[Auth / User API]
+  web --> walletSig[錢包簽名綁定]
+  web --> approve[MockUSDT approve]
+  web --> deposit[VaultManager deposit]
+  web --> withdrawReq[提現申請 API]
+
+  authApi --> db[(PostgreSQL<br/>Prisma)]
+  walletSig --> db
+  withdrawReq --> db
+
+  approve --> usdt[MockUSDT 合約]
+  deposit --> vault[VaultManager 合約]
+  usdt --> vault
+
+  vault -- Deposit event --> listener[Deposit Listener<br/>Node.js / Viem]
+  listener --> db
+
+  adminWeb --> adminApi[Admin API]
+  adminApi --> db
+  adminApi --> vault
+
+  vault --> staking[StakingVault 合約]
+  vault --> treasury[Platform Treasury]
+```
+
+### 核心資料流
+- **錢包綁定：** 前端要求 MetaMask 簽名，後端驗簽後把 wallet address 綁到 `User`。
+- **入金：** 使用者先 `approve` MockUSDT，再呼叫 `VaultManager.deposit`；合約發出 `Deposit` event。
+- **入帳：** listener 掃到 `Deposit` event 後，依 wallet address 找到已綁定使用者，寫入 `Transaction` 並增加 `User.balanceUsdt`。
+- **提現：** 使用者送出提現申請，Admin 審核後由後端呼叫 `VaultManager.executeWithdrawal`。
+- **遊戲：** 後續小遊戲不直接碰使用者錢包，而是使用 DB 內部餘額下注與結算。
+
 ## 核心機制：以賭養息 (Bet-to-Earn Equilibrium)
 - **遊戲盈餘：** 透過 3% 莊家優勢產生。
 - **利息補貼：** 90% 遊戲獲利進入獎金池，分配給鎖倉 7 天的投資者。
