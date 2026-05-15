@@ -78,14 +78,12 @@ export async function GET(request: Request) {
         createdAt: withdrawal.createdAt,
         user: {
           id: withdrawal.user.id,
-          tgId: withdrawal.user.tgId,
           walletAddress: withdrawal.user.walletAddress,
           balanceUsdt: withdrawal.user.balanceUsdt.toString(),
         },
       })),
       recentUsers: recentUsers.map((user) => ({
         id: user.id,
-        tgId: user.tgId,
         walletAddress: user.walletAddress,
         balanceUsdt: user.balanceUsdt.toString(),
         createdAt: user.createdAt,
@@ -100,7 +98,7 @@ export async function GET(request: Request) {
         createdAt: transaction.createdAt,
         user: {
           id: transaction.user.id,
-          tgId: transaction.user.tgId,
+          walletAddress: transaction.user.walletAddress,
         },
       })),
     });

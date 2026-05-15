@@ -75,7 +75,7 @@ export async function POST(request: Request, context: RouteContext) {
         where: { id: withdrawalId, status: "PENDING" },
         data: {
           status: "APPROVED",
-          reviewedBy: session.tgId,
+          reviewedBy: session.walletAddress,
           reviewedAt: new Date(),
         },
       });

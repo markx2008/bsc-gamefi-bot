@@ -15,18 +15,22 @@ function assertIncludes(source, expected, label) {
 }
 
 const packageJson = JSON.parse(read("package.json"));
+assert.equal(packageJson.name, "bsc-gamefi-web", "package should use web-oriented project name");
 assert.equal(
   packageJson.scripts["test:web-mvp"],
   "node scripts/verify-web-mvp-routes.mjs",
   "package.json should expose test:web-mvp",
 );
 
-const devLoginRoute = read("src/app/api/auth/dev-login/route.ts");
-assertIncludes(devLoginRoute, "NODE_ENV === \"production\"", "dev login route");
-assertIncludes(devLoginRoute, "WEB_MVP_ENABLE_DEV_LOGIN", "dev login route");
-assertIncludes(devLoginRoute, "signSessionToken", "dev login route");
-assertIncludes(devLoginRoute, "ADMIN_TG_ID", "dev login route");
-assertIncludes(devLoginRoute, "prisma.user.upsert", "dev login route");
+assert.ok(!existsSync(path.join(root, "src/app/api/auth/telegram/route.ts")), "Telegram auth route should not exist");
+assert.ok(!existsSync(path.join(root, "src/app/api/auth/dev-login/route.ts")), "tgId dev login route should not exist");
+assert.ok(!existsSync(path.join(root, "src/app/api/auth/bind-wallet/route.ts")), "wallet binding route should be replaced by wallet login");
+
+const walletLoginRoute = read("src/app/api/auth/wallet-login/route.ts");
+assertIncludes(walletLoginRoute, "signSessionToken", "wallet login route");
+assertIncludes(walletLoginRoute, "verifyWalletLoginSignature", "wallet login route");
+assertIncludes(walletLoginRoute, "resolvePendingDepositsForUser", "wallet login route");
+assertIncludes(walletLoginRoute, "user.upsert", "wallet login route");
 
 const meRoute = read("src/app/api/me/route.ts");
 assertIncludes(meRoute, "getBearerSession", "me route");
@@ -53,7 +57,7 @@ assertIncludes(withdrawalsRoute, "totalRequested", "withdrawals route");
 assertIncludes(withdrawalsRoute, "TransactionIsolationLevel.Serializable", "withdrawals route");
 
 const homePage = read("src/app/page.tsx");
-assertIncludes(homePage, "/api/auth/dev-login", "web dashboard");
+assertIncludes(homePage, "/api/auth/wallet-login", "web dashboard");
 assertIncludes(homePage, "/api/me", "web dashboard");
 assertIncludes(homePage, "/api/withdrawals", "web dashboard");
 assertIncludes(homePage, "VaultManager", "web dashboard");
@@ -73,5 +77,23 @@ const adminUserPage = read("src/app/admin/users/[id]/page.tsx");
 assertIncludes(adminUserPage, "/api/admin/users/", "admin user page");
 assertIncludes(adminUserPage, "transactions", "admin user page");
 assertIncludes(adminUserPage, "withdrawals", "admin user page");
+
+const authSource = read("src/lib/auth.ts");
+assertIncludes(authSource, "ADMIN_WALLET_ADDRESS", "auth helper");
+assertIncludes(authSource, "walletAddress", "session payload");
+
+const prismaSchema = read("prisma/schema.prisma");
+assertIncludes(prismaSchema, "walletAddress  String              @unique", "Prisma User model");
+assert.ok(!/tgId|ADMIN_TG_ID|TELEGRAM_BOT_TOKEN|Telegram Mini App|TMA/.test(prismaSchema), "Prisma schema should not contain Telegram identity fields");
+
+const readme = read("README.md");
+assert.ok(!/Telegram|TMA|tgId|Bot/.test(readme), "README should describe the web-only product without Telegram references");
+
+const developmentPlan = read("DEVELOPMENT_PLAN.md");
+assert.ok(!/Telegram|TMA|tgId|Bot/.test(developmentPlan), "development plan should not point agents toward Telegram work");
+
+const agentGuide = read("AGENTS.md");
+assertIncludes(agentGuide, "web-only", "agent guide");
+assertIncludes(agentGuide, "Do not add Telegram Bot or Telegram Mini App", "agent guide");
 
 console.log("Web MVP route verification passed.");

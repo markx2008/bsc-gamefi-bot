@@ -1,14 +1,13 @@
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { ArrowDownToLine, ExternalLink, KeyRound, Loader2, Shield, Wallet } from "lucide-react";
+import { ArrowDownToLine, ExternalLink, Loader2, Shield, Wallet } from "lucide-react";
 import Link from "next/link";
 import { encodeFunctionData, formatUnits, parseAbi, parseUnits } from "viem";
 
 type UserState = {
   id: number;
-  tgId: string;
-  walletAddress: string | null;
+  walletAddress: string;
   balanceUsdt: string;
   pendingWithdrawalTotal: string;
   availableBalanceUsdt: string;
@@ -75,8 +74,8 @@ function shortAddress(value: string | null | undefined) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
-function walletBindingMessage(tgId: string, walletAddress: string) {
-  return `Bind wallet ${walletAddress.toLowerCase()} to Telegram user ${tgId}`;
+function walletLoginMessage(walletAddress: string) {
+  return `Sign in to BSC GameFi Web with wallet ${walletAddress.toLowerCase()}`;
 }
 
 function vaultStatusMessage(data: MeResponse | null) {
@@ -89,7 +88,6 @@ function vaultStatusMessage(data: MeResponse | null) {
 
 export default function WebValidationDashboard() {
   const [token, setToken] = useState("");
-  const [tgId, setTgId] = useState("test_user_001");
   const [data, setData] = useState<MeResponse | null>(null);
   const [withdrawAmount, setWithdrawAmount] = useState("");
   const [depositAmount, setDepositAmount] = useState("");
@@ -126,18 +124,29 @@ export default function WebValidationDashboard() {
     return window.ethereum.request({ method, params }) as Promise<T>;
   }
 
-  async function login(role: "user" | "admin") {
+  async function signInWithWallet() {
     setLoading(true);
     setStatus("");
     try {
-      const payload = await requestJson<{ token: string }>("/api/auth/dev-login", {
+      if (!window.ethereum) {
+        throw new Error("MetaMask is not available in this browser.");
+      }
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const walletAddress = accounts[0];
+      if (!walletAddress) throw new Error("No wallet account selected in MetaMask.");
+      const signature = await window.ethereum.request({
+        method: "personal_sign",
+        params: [walletLoginMessage(walletAddress), walletAddress],
+      }) as string;
+
+      const payload = await requestJson<{ token: string; resolvedDeposits: number }>("/api/auth/wallet-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tgId, role }),
+        body: JSON.stringify({ walletAddress, signature }),
       });
       window.localStorage.setItem(TOKEN_KEY, payload.token);
       setToken(payload.token);
-      setStatus(role === "admin" ? "Admin dev session ready." : "User dev session ready.");
+      setStatus(payload.resolvedDeposits > 0 ? `Wallet session ready. Resolved ${payload.resolvedDeposits} pending deposits.` : "Wallet session ready.");
       await loadMe(payload.token);
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Login failed");
@@ -187,44 +196,6 @@ export default function WebValidationDashboard() {
 
     setTokenBalance(formatUnits(BigInt(balanceHex), TOKEN_DECIMALS));
     setDepositAllowance(formatUnits(BigInt(allowanceHex), TOKEN_DECIMALS));
-  }
-
-  async function bindWallet() {
-    if (!data?.user) {
-      setStatus("Sign in with User dev login before binding a wallet.");
-      return;
-    }
-    if (!window.ethereum) {
-      setStatus("MetaMask is not available in this browser. Install the extension or open this page inside MetaMask browser.");
-      return;
-    }
-
-    setLoading(true);
-    setStatus("");
-    try {
-      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
-      const walletAddress = accounts[0];
-      if (!walletAddress) throw new Error("No wallet account selected in MetaMask.");
-      const signature = await window.ethereum.request({
-        method: "personal_sign",
-        params: [walletBindingMessage(data.user.tgId, walletAddress), walletAddress],
-      }) as string;
-
-      await requestJson("/api/auth/bind-wallet", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...authHeaders,
-        },
-        body: JSON.stringify({ walletAddress, signature }),
-      });
-      setStatus("Wallet bound. Any pending deposits for this address will be resolved.");
-      await loadMe();
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : "Wallet binding failed");
-    } finally {
-      setLoading(false);
-    }
   }
 
   async function sendWalletTransaction(to: string, data: `0x${string}`) {
@@ -334,23 +305,11 @@ export default function WebValidationDashboard() {
 
         <section className="grid gap-4 lg:grid-cols-[360px_1fr]">
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
-            <h2 className="text-base font-semibold text-white">Dev Login</h2>
-            <p className="mt-1 text-sm text-zinc-400">用瀏覽器模擬 Telegram tgId，先驗證資金流程。</p>
-            <label className="mt-5 block text-sm text-zinc-300" htmlFor="tgId">Test tgId</label>
-            <input
-              id="tgId"
-              className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              value={tgId}
-              onChange={(event) => setTgId(event.target.value)}
-            />
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button className="inline-flex items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500" onClick={() => login("user")} disabled={loading}>
-                <KeyRound size={16} /> User
-              </button>
-              <button className="inline-flex items-center justify-center gap-2 rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" onClick={() => login("admin")} disabled={loading}>
-                <Shield size={16} /> Admin
-              </button>
-            </div>
+            <h2 className="text-base font-semibold text-white">Wallet Login</h2>
+            <p className="mt-1 text-sm text-zinc-400">Connect MetaMask and sign a wallet message to create a web session.</p>
+            <button className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-md bg-emerald-600 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60" onClick={signInWithWallet} disabled={loading}>
+              {loading ? <Loader2 size={16} className="animate-spin" /> : <Wallet size={16} />} Sign in with wallet
+            </button>
             {status ? <p className="mt-4 rounded-md border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-300">{status}</p> : null}
           </div>
 
@@ -366,20 +325,16 @@ export default function WebValidationDashboard() {
             <div className="flex items-start justify-between gap-4">
               <div>
                 <h2 className="text-base font-semibold text-white">Wallet and Deposit</h2>
-                <p className="mt-1 text-sm text-zinc-400">綁定錢包後，將 BSC Testnet USDT approve 並 deposit 到 VaultManager。</p>
+                <p className="mt-1 text-sm text-zinc-400">登入錢包後，將 BSC Testnet USDT approve 並 deposit 到 VaultManager。</p>
               </div>
               <Wallet className="text-emerald-400" size={22} />
             </div>
             <dl className="mt-5 space-y-3 text-sm">
-              <Row label="tgId" value={user?.tgId || "-"} />
               <Row label="Wallet" value={shortAddress(user?.walletAddress)} />
               <Row label="Network" value={data?.config.network || "BSC Testnet"} />
               <Row label="USDT" value={shortAddress(data?.config.usdtAddress)} />
               <Row label="VaultManager" value={shortAddress(data?.config.vaultAddress)} />
             </dl>
-            <button className="mt-5 inline-flex items-center gap-2 rounded-md border border-emerald-600 px-3 py-2 text-sm font-medium text-emerald-300 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60" onClick={bindWallet} disabled={loading}>
-              <Wallet size={16} /> Bind wallet signature
-            </button>
             <p className={data?.config.vaultAddress ? "mt-4 text-xs leading-5 text-zinc-500" : "mt-4 text-xs leading-5 text-amber-300"}>
               {vaultStatusMessage(data)}
             </p>

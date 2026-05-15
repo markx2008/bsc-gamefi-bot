@@ -1,5 +1,5 @@
 import { Prisma } from "@prisma/client";
-import { getBearerSession } from "@/lib/auth";
+import { getBearerSession, isAdminWalletAddress } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -9,7 +9,7 @@ export async function GET(request: Request) {
   try {
     const session = getBearerSession(request);
     const user = await prisma.user.findUnique({
-      where: { tgId: session.tgId },
+      where: { walletAddress: session.walletAddress },
       include: {
         transactions: {
           orderBy: { createdAt: "desc" },
@@ -33,12 +33,11 @@ export async function GET(request: Request) {
     return NextResponse.json({
       user: {
         id: user.id,
-        tgId: user.tgId,
         walletAddress: user.walletAddress,
         balanceUsdt: user.balanceUsdt.toString(),
         pendingWithdrawalTotal: pendingWithdrawalTotal.toString(),
         availableBalanceUsdt: user.balanceUsdt.minus(pendingWithdrawalTotal).toString(),
-        isAdmin: user.tgId === process.env.ADMIN_TG_ID,
+        isAdmin: isAdminWalletAddress(user.walletAddress),
       },
       transactions: user.transactions.map((transaction) => ({
         id: transaction.id,

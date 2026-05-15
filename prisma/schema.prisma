@@ -9,8 +9,7 @@ datasource db {
 
 model User {
   id             Int                 @id @default(autoincrement())
-  tgId           String              @unique
-  walletAddress  String?             @unique
+  walletAddress  String              @unique
   balanceUsdt    Decimal             @default(0) @db.Decimal(36, 18)
   createdAt      DateTime            @default(now())
   updatedAt      DateTime            @updatedAt

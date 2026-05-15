@@ -1,16 +1,8 @@
 import crypto from "crypto";
 import { isAddress, verifyMessage } from "viem";
 
-export type TelegramAuthPayload = {
-  id: string;
-  username?: string;
-  firstName?: string;
-  lastName?: string;
-  authDate: number;
-};
-
 export type SessionPayload = {
-  tgId: string;
+  walletAddress: string;
   iat: number;
   exp: number;
 };
@@ -32,64 +24,15 @@ export function assertWalletAddress(walletAddress: string): `0x${string}` {
   return normalizeWalletAddress(walletAddress) as `0x${string}`;
 }
 
-export function buildWalletBindingMessage(tgId: string, walletAddress: string) {
-  return `Bind wallet ${normalizeWalletAddress(walletAddress)} to Telegram user ${tgId}`;
+export function buildWalletLoginMessage(walletAddress: string) {
+  return `Sign in to BSC GameFi Web with wallet ${normalizeWalletAddress(walletAddress)}`;
 }
 
-export function verifyTelegramInitData(initData: string, botToken: string, maxAgeSeconds = 86400): TelegramAuthPayload {
-  if (!botToken) throw new Error("TELEGRAM_BOT_TOKEN is required");
-
-  const params = new URLSearchParams(initData);
-  const receivedHash = params.get("hash");
-  const userJson = params.get("user");
-  const authDateRaw = params.get("auth_date");
-
-  if (!receivedHash || !userJson || !authDateRaw) {
-    throw new Error("Invalid Telegram initData");
-  }
-
-  const dataCheckString = [...params.entries()]
-    .filter(([key]) => key !== "hash")
-    .sort(([left], [right]) => left.localeCompare(right))
-    .map(([key, value]) => `${key}=${value}`)
-    .join("\n");
-
-  const secretKey = hmacSha256("WebAppData", botToken);
-  const calculatedHash = crypto.createHmac("sha256", secretKey).update(dataCheckString).digest("hex");
-
-  const expected = Buffer.from(calculatedHash, "hex");
-  const actual = Buffer.from(receivedHash, "hex");
-  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
-    throw new Error("Telegram initData signature mismatch");
-  }
-
-  const authDate = Number(authDateRaw);
-  if (!Number.isFinite(authDate)) throw new Error("Invalid Telegram auth_date");
-
-  const ageSeconds = Math.floor(Date.now() / 1000) - authDate;
-  if (ageSeconds > maxAgeSeconds) throw new Error("Telegram initData expired");
-
-  const user = JSON.parse(userJson) as {
-    id: number | string;
-    username?: string;
-    first_name?: string;
-    last_name?: string;
-  };
-
-  return {
-    id: String(user.id),
-    username: user.username,
-    firstName: user.first_name,
-    lastName: user.last_name,
-    authDate,
-  };
-}
-
-export function signSessionToken(payload: { tgId: string }, secret: string, ttlSeconds = 86400) {
+export function signSessionToken(payload: { walletAddress: string }, secret: string, ttlSeconds = 86400) {
   if (!secret) throw new Error("JWT_SECRET is required");
   const now = Math.floor(Date.now() / 1000);
   const sessionPayload: SessionPayload = {
-    tgId: payload.tgId,
+    walletAddress: assertWalletAddress(payload.walletAddress),
     iat: now,
     exp: now + ttlSeconds,
   };
@@ -124,19 +67,24 @@ export function getBearerSession(request: Request) {
   return verifySessionToken(token, process.env.JWT_SECRET || "");
 }
 
-export function assertAdminSession(session: SessionPayload) {
-  if (!process.env.ADMIN_TG_ID) throw new Error("ADMIN_TG_ID is required");
-  if (session.tgId !== process.env.ADMIN_TG_ID) throw new Error("Admin privileges required");
+export function isAdminWalletAddress(walletAddress: string) {
+  const adminWallet = process.env.ADMIN_WALLET_ADDRESS;
+  if (!adminWallet) return false;
+  return normalizeWalletAddress(walletAddress) === normalizeWalletAddress(adminWallet);
 }
 
-export async function verifyWalletBindingSignature(params: {
-  tgId: string;
+export function assertAdminSession(session: SessionPayload) {
+  if (!process.env.ADMIN_WALLET_ADDRESS) throw new Error("ADMIN_WALLET_ADDRESS is required");
+  if (!isAdminWalletAddress(session.walletAddress)) throw new Error("Admin privileges required");
+}
+
+export async function verifyWalletLoginSignature(params: {
   walletAddress: `0x${string}`;
   signature: `0x${string}`;
 }) {
   return verifyMessage({
     address: params.walletAddress,
-    message: buildWalletBindingMessage(params.tgId, params.walletAddress),
+    message: buildWalletLoginMessage(params.walletAddress),
     signature: params.signature,
   });
 }

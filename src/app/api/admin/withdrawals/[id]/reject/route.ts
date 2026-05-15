@@ -22,7 +22,7 @@ export async function POST(request: Request, context: RouteContext) {
       where: { id: withdrawalId },
       data: {
         status: "REJECTED",
-        reviewedBy: session.tgId,
+        reviewedBy: session.walletAddress,
         reviewedAt: new Date(),
       },
     });

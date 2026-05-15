@@ -22,15 +22,13 @@ type AdminOverview = {
     createdAt: string;
     user: {
       id: number;
-      tgId: string;
-      walletAddress: string | null;
+      walletAddress: string;
       balanceUsdt: string;
     };
   }>;
   recentUsers: Array<{
     id: number;
-    tgId: string;
-    walletAddress: string | null;
+    walletAddress: string;
     balanceUsdt: string;
     updatedAt: string;
   }>;
@@ -43,12 +41,20 @@ type AdminOverview = {
     createdAt: string;
     user: {
       id: number;
-      tgId: string;
+      walletAddress: string;
     };
   }>;
 };
 
 const TOKEN_KEY = "web_mvp_session_token";
+
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (params: { method: string; params?: unknown[] }) => Promise<unknown>;
+    };
+  }
+}
 
 function formatUsdt(value: string | number | null | undefined) {
   const numeric = Number(value ?? 0);
@@ -58,6 +64,10 @@ function formatUsdt(value: string | number | null | undefined) {
 function shortAddress(value: string | null | undefined) {
   if (!value) return "-";
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function walletLoginMessage(walletAddress: string) {
+  return `Sign in to BSC GameFi Web with wallet ${walletAddress.toLowerCase()}`;
 }
 
 export default function AdminDashboard() {
@@ -90,10 +100,19 @@ export default function AdminDashboard() {
     setLoading(true);
     setStatus("");
     try {
-      const payload = await requestJson<{ token: string }>("/api/auth/dev-login", {
+      if (!window.ethereum) throw new Error("MetaMask is not available in this browser.");
+      const accounts = await window.ethereum.request({ method: "eth_requestAccounts" }) as string[];
+      const walletAddress = accounts[0];
+      if (!walletAddress) throw new Error("No wallet account selected in MetaMask.");
+      const signature = await window.ethereum.request({
+        method: "personal_sign",
+        params: [walletLoginMessage(walletAddress), walletAddress],
+      }) as string;
+
+      const payload = await requestJson<{ token: string }>("/api/auth/wallet-login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ role: "admin" }),
+        body: JSON.stringify({ walletAddress, signature }),
       });
       window.localStorage.setItem(TOKEN_KEY, payload.token);
       setToken(payload.token);
@@ -153,7 +172,7 @@ export default function AdminDashboard() {
             <button className="inline-flex items-center gap-2 rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-900" onClick={() => loadOverview()} disabled={!token || loading}>
               {loading ? <Loader2 size={16} className="animate-spin" /> : <RefreshCw size={16} />} Refresh
             </button>
-            <button className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" onClick={loginAdmin} disabled={loading}>Dev admin login</button>
+            <button className="rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500" onClick={loginAdmin} disabled={loading}>Wallet admin login</button>
           </div>
         </header>
 
@@ -185,7 +204,7 @@ export default function AdminDashboard() {
                 {overview?.pendingWithdrawals.length ? overview.pendingWithdrawals.map((withdrawal) => (
                   <tr className="border-t border-zinc-800" key={withdrawal.id}>
                     <td className="px-5 py-3 text-zinc-200">
-                      <Link className="hover:text-sky-300" href={`/admin/users/${withdrawal.user.id}`}>{withdrawal.user.tgId}</Link>
+                      <Link className="hover:text-sky-300" href={`/admin/users/${withdrawal.user.id}`}>{shortAddress(withdrawal.user.walletAddress)}</Link>
                     </td>
                     <td className="px-5 py-3 font-mono text-zinc-400">{shortAddress(withdrawal.walletAddress)}</td>
                     <td className="px-5 py-3 font-mono text-zinc-100">${formatUsdt(withdrawal.amount)}</td>
@@ -211,12 +230,12 @@ export default function AdminDashboard() {
 
         <section className="grid gap-4 lg:grid-cols-2">
           <SimpleList title="Recent Users" rows={(overview?.recentUsers || []).map((user) => ({
-            left: user.tgId,
+            left: shortAddress(user.walletAddress),
             right: `$${formatUsdt(user.balanceUsdt)}`,
             href: `/admin/users/${user.id}`,
           }))} />
           <SimpleList title="Recent Transactions" rows={(overview?.recentTransactions || []).map((transaction) => ({
-            left: `${transaction.type} / ${transaction.user.tgId}`,
+            left: `${transaction.type} / ${shortAddress(transaction.user.walletAddress)}`,
             right: `${transaction.status} $${formatUsdt(transaction.amount)}`,
           }))} />
         </section>

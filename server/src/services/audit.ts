@@ -58,7 +58,7 @@ export async function performSystemAudit() {
 
     if (difference < 0) {
       console.error(`🔥 [ALARM] 警報！資金缺口偵測到: ${Math.abs(difference)} USDT!`);
-      // 這裡未來可以串接 Telegram Bot API 發送訊息
+      // 這裡未來可以串接 Email、Slack 或其他營運告警管道。
       await notifyAdmin(`🚨 財務警告：鏈上資金缺口 ${Math.abs(difference)} USDT! 請立即檢查！`);
     } else {
       console.log('✅ [AUDIT] 財務對帳通過，數據一致。');
@@ -70,5 +70,5 @@ export async function performSystemAudit() {
 }
 
 async function notifyAdmin(message: string) {
-    console.log(`[TELEGRAM NOTIFY] Admin: ${message}`);
+    console.log(`[ADMIN ALERT] ${message}`);
 }

@@ -182,7 +182,7 @@ export async function handleDeposit(walletAddress: string, amount: bigint, txHas
       });
     });
 
-    console.log(`✅ [SUCCESS] 用戶 ${user.tgId} 儲值入帳成功: +${amountUsdt} USDT`);
+    console.log(`✅ [SUCCESS] 用戶 ${user.walletAddress} 儲值入帳成功: +${amountUsdt} USDT`);
   } catch (error) {
     console.error(`🔥 [CRITICAL] 處理儲值失敗: ${txHash}`, error);
     throw error;

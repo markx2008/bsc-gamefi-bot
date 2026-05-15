@@ -1,6 +1,6 @@
-# 《以賭養息：GameFi & DeFi 平台開發計畫》
+# 《以賭養息：GameFi & DeFi Web 平台開發計畫》
 
-本專案旨在建立一個基於 Telegram Mini App 的高度流暢、公平且具備自我平衡機制的 GameFi 平台。
+本專案旨在建立一個 browser-first、以錢包登入為核心的 GameFi 平台。產品載體是 Web App，使用者透過 MetaMask 操作 BSC Testnet / BSC 主網資金流，管理員透過 Web 後台審核提現與監控對帳。
 
 ## 1. 核心機制：以賭養息 (Bet-to-Earn Equilibrium)
 - **莊家優勢：** 遊戲設定 2%~5% 的固定數學優勢。
@@ -9,28 +9,28 @@
 
 ## 2. 技術棧 (Tech Stack)
 - **區塊鏈層 (Blockchain):** BSC (Solidity, OpenZeppelin)
-- **隨機數公平性 (Fairness):** 
+- **隨機數公平性 (Fairness):**
     - 儲值模式：Server Seed + Client Seed + Nonce (Provably Fair)
     - 關鍵操作：Chainlink VRF (選配，用於大額結算)
-- **後端引擎 (Backend):** Node.js / NestJS (TypeScript - 高速處理遊戲扣款、分紅與管理 API)
-- **數據緩衝 (Cache):** Redis (處理秒級下注扣款)
+- **後端引擎 (Backend):** Next.js API Routes + Node.js listener，後續可拆分為獨立服務。
+- **數據緩衝 (Cache):** Redis (後續處理秒級下注扣款)
 - **前端框架 (Frontend):** Next.js (TypeScript) + Tailwind CSS
-- **管理後台:** Admin Web Dashboard (SIWE 驗證，用於提現審核與對帳監控)
-- **平台載體 (Platform):** Telegram Mini App (TMA)
-- **錢包連結 (Web3):** RainbowKit + Wagmi
+- **管理後台:** Admin Web Dashboard，以管理員錢包地址驗證權限。
+- **平台載體 (Platform):** Web App
+- **錢包連結 (Web3):** MetaMask browser provider + Viem，後續可加 RainbowKit + Wagmi。
 
 ## 3. 分階段開發計畫
 
 ### 第一階段：資金基礎設施 (Phase 1: Financial Infrastructure)
-- [x] 撰寫 `Vault.sol` 合約 (USDT 儲值、提現、90/10 分紅接口)。
+- [x] 撰寫 `VaultManager.sol` 合約 (USDT 儲值、提現、90/10 分紅接口)。
 - [x] 實作後端監聽器 (Listener)，自動將鏈上儲值同步到資料庫餘額。
-- [x] 整合 Telegram OAuth 與錢包綁定帳號系統。
+- [x] 整合 wallet signature login 與 wallet-first 帳號系統。
 
 ### 第 1.5 階段：真實資料串接與營運穩定 (Phase 1.5: Live Data & Ops Hardening)
-- [ ] 將 Admin Dashboard 財務指標改接資料庫與鏈上合約讀取，移除硬編模擬數據。
-- [ ] 將提現審核列表與用戶審核頁串接 `WithdrawalRequest`、`User`、`Transaction` 真實資料。
-- [ ] 將 listener production 啟動改為編譯後 JavaScript，降低 Zeabur runtime 記憶體用量。
-- [ ] 補齊 Zeabur listener 環境變數檢查文件：`VAULT_ADDRESS`、`RPC_URL`、`DATABASE_URL`、`USDT_DECIMALS`、`LISTENER_START_BLOCK`。
+- [x] 將 Admin Dashboard 財務指標改接資料庫與鏈上合約讀取，移除硬編模擬數據。
+- [x] 將提現審核列表與用戶審核頁串接 `WithdrawalRequest`、`User`、`Transaction` 真實資料。
+- [x] 將 listener production 啟動改為編譯後 JavaScript，降低 Zeabur runtime 記憶體用量。
+- [x] 補齊 Zeabur listener 環境變數檢查文件：`VAULT_ADDRESS`、`RPC_URL`、`DATABASE_URL`、`USDT_DECIMALS`、`LISTENER_START_BLOCK`。
 
 ### 第二階段：極簡遊戲模組 (Phase 2: Minimalist Games)
 - [ ] 實作「公平性驗證演算法」。
@@ -41,12 +41,12 @@
 - [ ] 實作連點防護與異步扣款機制。
 
 ### 第三階段：收益寶 DeFi 模組 (Phase 3: Staking & APY)
-- [ ] 實作 `Staking.sol` 7 天鎖倉合約。
+- [ ] 實作 `StakingVault.sol` 7 天鎖倉合約。
 - [ ] 開發動態 APY 顯示組件。
 - [ ] 實作每週自動獎金結算與發放邏輯。
 
-### 第四階段：Telegram 適配與主網部署 (Phase 4: Optimization & Mainnet)
-- [ ] Telegram Mini App UI 適配 (深色模式、手勢優化)。
+### 第四階段：Web 上線與主網部署 (Phase 4: Web Production & Mainnet)
+- [ ] Web UI 響應式優化、錢包錯誤處理與交易狀態追蹤。
 - [ ] 壓力測試與安全審計。
 - [ ] 部署至 BSC 主網並開啟營運。
 
@@ -56,4 +56,4 @@
 - **重點：** 加載速度快、反饋即時、操作直接。
 
 ---
-*Last Updated: 2026-05-06*
+*Last Updated: 2026-05-15*

@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "BSC GameFi Bot",
-  description: "GameFi and DeFi Telegram Mini App on BSC",
+  title: "BSC GameFi Web",
+  description: "Browser-first GameFi and DeFi web app on BSC",
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {

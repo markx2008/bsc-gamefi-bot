@@ -56,7 +56,6 @@ export async function GET(request: Request, context: RouteContext) {
     return NextResponse.json({
       user: {
         id: user.id,
-        tgId: user.tgId,
         walletAddress: user.walletAddress,
         balanceUsdt: user.balanceUsdt.toString(),
         pendingWithdrawalTotal: pendingWithdrawalTotal.toString(),

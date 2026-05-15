@@ -7,8 +7,7 @@ import Link from "next/link";
 type AdminUserDetail = {
   user: {
     id: number;
-    tgId: string;
-    walletAddress: string | null;
+    walletAddress: string;
     balanceUsdt: string;
     pendingWithdrawalTotal: string;
   };
@@ -103,8 +102,8 @@ export default function UserAuditPage({ params }: { params: Promise<{ id: string
 
         <header>
           <p className="text-sm font-medium text-sky-400">User audit</p>
-          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{user?.tgId || `User #${resolvedParams.id}`}</h1>
-          <p className="mt-2 font-mono text-sm text-zinc-500">{user?.walletAddress || "No wallet bound"}</p>
+          <h1 className="mt-1 text-2xl font-semibold text-white md:text-3xl">{user?.walletAddress ? shortAddress(user.walletAddress) : `User #${resolvedParams.id}`}</h1>
+          <p className="mt-2 font-mono text-sm text-zinc-500">{user?.walletAddress || "-"}</p>
         </header>
 
         {status ? <p className="rounded-md border border-zinc-800 bg-zinc-900 p-3 text-sm text-zinc-300">{status}</p> : null}

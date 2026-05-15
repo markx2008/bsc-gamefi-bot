@@ -16,9 +16,8 @@ export async function POST(request: Request) {
     const withdrawAmount = parsePositiveDecimal(amount);
 
     const withdrawal = await prisma.$transaction(async (tx) => {
-      const user = await tx.user.findUnique({ where: { tgId: session.tgId } });
+      const user = await tx.user.findUnique({ where: { walletAddress: session.walletAddress } });
       if (!user) throw new Error("User not found");
-      if (!user.walletAddress) throw new Error("Wallet not bound");
 
       const pendingWithdrawals = await tx.withdrawalRequest.aggregate({
         where: { userId: user.id, status: "PENDING" },

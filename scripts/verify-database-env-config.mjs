@@ -12,8 +12,7 @@ const initDbSource = fs
   .readFileSync(new URL('../scripts/init-db.mjs', import.meta.url), 'utf8')
   .replace(/\r\n/g, '\n');
 const apiFiles = [
-  '../src/app/api/auth/telegram/route.ts',
-  '../src/app/api/auth/bind-wallet/route.ts',
+  '../src/app/api/auth/wallet-login/route.ts',
   '../src/app/api/withdrawals/route.ts',
   '../src/app/api/admin/withdrawals/[id]/approve/route.ts',
   '../src/app/api/admin/withdrawals/[id]/reject/route.ts',

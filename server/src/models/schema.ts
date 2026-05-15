@@ -1,7 +1,6 @@
 export interface User {
   id: number;
-  tgId: string;
-  walletAddress: string | null;
+  walletAddress: string;
   balanceUsdt: string;
   createdAt: Date;
   updatedAt: Date;
