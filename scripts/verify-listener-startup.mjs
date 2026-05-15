@@ -9,5 +9,5 @@ assert.equal(packageJson.scripts.server, 'node scripts/start-listener.mjs', 'lis
 assert.match(startListenerSource, /createServer/, 'startup wrapper must expose an HTTP health server for Zeabur web services');
 assert.match(startListenerSource, /process\.env\.PORT \|\| '3000'/, 'health server must bind Zeabur PORT with 3000 fallback');
 assert.match(startListenerSource, /runCommand\(npmBin, \['run', 'db:init'\]\)/, 'startup wrapper must run db:init before listener');
-assert.match(startListenerSource, /spawn\(nodeBin, \['dist\/server\/src\/services\/listener\.js'\]/, 'startup wrapper must start compiled listener after db:init');
+assert.match(startListenerSource, /spawn\(nodeBin, \['dist\/server\/server\/src\/services\/listener\.js'\]/, 'startup wrapper must start compiled listener after db:init');
 assert.match(startListenerSource, /SIGTERM/, 'startup wrapper must forward SIGTERM for graceful shutdown');

@@ -10,6 +10,11 @@ assert.equal(
   'node scripts/start-listener.mjs',
   'production server script must use managed startup wrapper',
 );
+assert.match(
+  fs.readFileSync(new URL('../scripts/start-listener.mjs', import.meta.url), 'utf8'),
+  /dist\/server\/server\/src\/services\/listener\.js/,
+  'startup wrapper must point to the compiled listener path emitted by server/tsconfig.json',
+);
 assert.equal(
   packageJson.scripts['server:dev'],
   'ts-node server/src/services/listener.ts',

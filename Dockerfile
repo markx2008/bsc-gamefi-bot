@@ -32,5 +32,7 @@ COPY --from=base /app ./
 # 移除 build-only 依賴，避免 listener runtime 載入 TypeScript toolchain
 RUN npm prune --omit=dev
 
+EXPOSE 3000
+
 # 預設啟動 Web 服務 (Zeabur 中可以透過 CMD 覆蓋此指令)
 CMD ["npm", "run", "start"]

@@ -74,6 +74,34 @@ flowchart LR
 
 ## Web MVP 驗證
 
+### Docker 一鍵啟動
+
+1. 確認 `.env` 已設定 `RPC_URL`、`USDT_ADDRESS`、`VAULT_ADDRESS`、`JWT_SECRET`。
+2. 啟動前端、listener 與 PostgreSQL：
+
+```bash
+npm run docker:up
+```
+
+3. 開啟 `http://localhost:3000` 測試前端。
+4. listener health check 可看 `http://localhost:3001/healthz`。
+5. 查看 web/listener log：
+
+```bash
+npm run docker:logs
+```
+
+停止服務：
+
+```bash
+npm run docker:down
+```
+
+Docker Compose 會自動建立本機 PostgreSQL，並把 app container 的 `DATABASE_URL` 指到 `postgres:5432`。如果你想從本機工具連 DB，使用 `localhost:15432`。
+若本機 port 已被占用，可在 `.env` 改 `WEB_HOST_PORT`、`LISTENER_HOST_PORT`、`POSTGRES_HOST_PORT`。
+
+### 手動啟動
+
 1. 設定 `.env`：`DATABASE_URL`、`JWT_SECRET`、`ADMIN_TG_ID`、`VAULT_ADDRESS`、`USDT_ADDRESS`。
 2. 啟動資料庫初始化：`npm run db:init`。
 3. 啟動 web：`npm run dev`。

@@ -45,7 +45,7 @@ function runCommand(command, args) {
 }
 
 function startLongRunningListener() {
-  const child = spawn(nodeBin, ['dist/server/src/services/listener.js'], {
+  const child = spawn(nodeBin, ['dist/server/server/src/services/listener.js'], {
     env: process.env,
     stdio: 'inherit',
   });

@@ -14,6 +14,10 @@
     "test:contracts": "hardhat test",
     "deploy:testnet": "hardhat run scripts/deploy.mjs --network bscTestnet",
     "deploy:testnet:win": "npm install && npm run deploy:testnet",
+    "docker:up": "docker compose up --build",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f web listener",
+    "docker:rebuild": "docker compose build --no-cache",
     "server:dev": "ts-node server/src/services/listener.ts",
     "build:server": "tsc -p server/tsconfig.json",
     "test:server-config": "node scripts/verify-server-runtime.mjs",
@@ -23,7 +27,8 @@
     "test:listener-startup": "node scripts/verify-listener-startup.mjs",
     "test:listener-checkpoint": "node scripts/verify-listener-checkpoint-safety.mjs",
     "test:withdrawal-approval": "node scripts/verify-withdrawal-approval-safety.mjs",
-    "test:web-mvp": "node scripts/verify-web-mvp-routes.mjs"
+    "test:web-mvp": "node scripts/verify-web-mvp-routes.mjs",
+    "test:docker-stack": "node scripts/verify-docker-compose-stack.mjs"
   },
   "keywords": [],
   "author": "",
