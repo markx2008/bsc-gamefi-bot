@@ -9,6 +9,10 @@ function decimalToString(value: Prisma.Decimal | null | undefined) {
   return (value ?? ZERO).toString();
 }
 
+function getInitialGameBankroll() {
+  return new Prisma.Decimal(process.env.INITIAL_GAME_BANKROLL_USDT || "95000");
+}
+
 export async function GET(request: Request) {
   const prisma = getPrisma();
 
@@ -24,6 +28,7 @@ export async function GET(request: Request) {
       pendingWithdrawals,
       recentUsers,
       recentTransactions,
+      poolEntries,
     ] = await Promise.all([
       prisma.user.aggregate({ _sum: { balanceUsdt: true }, _count: true }),
       prisma.transaction.aggregate({
@@ -54,10 +59,18 @@ export async function GET(request: Request) {
         orderBy: { createdAt: "desc" },
         take: 25,
       }),
+      prisma.platformLedgerEntry.groupBy({
+        by: ["pool"],
+        _sum: { amount: true },
+      }),
     ]);
 
     const totalUserBalances = userBalances._sum.balanceUsdt ?? ZERO;
     const pendingWithdrawalTotal = pendingWithdrawalTotals._sum.amount ?? ZERO;
+    const poolTotals = new Map(poolEntries.map((entry) => [entry.pool, entry._sum.amount ?? ZERO]));
+    const gameBankroll = getInitialGameBankroll().plus(poolTotals.get("GAME_BANKROLL") ?? ZERO);
+    const platformRevenue = poolTotals.get("PLATFORM_REVENUE") ?? ZERO;
+    const earnBonusPool = poolTotals.get("EARN_BONUS_POOL") ?? ZERO;
 
     return NextResponse.json({
       stats: {
@@ -68,6 +81,9 @@ export async function GET(request: Request) {
         pendingWithdrawalTotal: pendingWithdrawalTotal.toString(),
         pendingWithdrawalCount: pendingWithdrawalTotals._count,
         availableLiquidity: totalUserBalances.minus(pendingWithdrawalTotal).toString(),
+        gameBankroll: gameBankroll.toString(),
+        platformRevenue: platformRevenue.toString(),
+        earnBonusPool: earnBonusPool.toString(),
       },
       pendingWithdrawals: pendingWithdrawals.map((withdrawal) => ({
         id: withdrawal.id,

@@ -14,6 +14,9 @@ type AdminOverview = {
     pendingWithdrawalTotal: string;
     pendingWithdrawalCount: number;
     availableLiquidity: string;
+    gameBankroll: string;
+    platformRevenue: string;
+    earnBonusPool: string;
   };
   pendingWithdrawals: Array<{
     id: number;
@@ -184,6 +187,12 @@ export default function AdminDashboard() {
           <Metric label="使用者負債" value={`$${formatUsdt(stats?.totalUserBalances)}`} icon={<ShieldAlert size={20} />} />
           <Metric label="待審提現" value={`$${formatUsdt(stats?.pendingWithdrawalTotal)}`} detail={`${stats?.pendingWithdrawalCount ?? 0} 筆申請`} icon={<RefreshCw size={20} />} />
           <Metric label="使用者數" value={String(stats?.totalUsers ?? 0)} detail={`可用流動性 $${formatUsdt(stats?.availableLiquidity)}`} icon={<Users size={20} />} />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <Metric label="遊戲金庫" value={`$${formatUsdt(stats?.gameBankroll)}`} detail="初始金庫 + 遊戲輸贏分錄" icon={<ShieldAlert size={20} />} />
+          <Metric label="平台收益" value={`$${formatUsdt(stats?.platformRevenue)}`} detail="遊戲正利潤抽成" icon={<Wallet size={20} />} />
+          <Metric label="收益寶獎金池" value={`$${formatUsdt(stats?.earnBonusPool)}`} detail="遊戲補貼與外部收益分錄" icon={<RefreshCw size={20} />} />
         </section>
 
         <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">

@@ -45,10 +45,24 @@ type Withdrawal = {
   createdAt: string;
 };
 
+type GameRound = {
+  id: number;
+  game: string;
+  betAmount: string;
+  playerChoice: string;
+  outcome: string;
+  result: string;
+  payoutAmount: string;
+  userBalanceDelta: string;
+  houseProfit: string;
+  createdAt: string;
+};
+
 type MeResponse = {
   user: UserState;
   transactions: Transaction[];
   withdrawals: Withdrawal[];
+  gameRounds: GameRound[];
   config: {
     vaultAddress: string | null;
     usdtAddress: string | null;
@@ -93,6 +107,21 @@ function shortAddress(value: string | null | undefined) {
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
 }
 
+function formatSignedUsdt(value: string | number | null | undefined) {
+  const numeric = Number(value ?? 0);
+  if (numeric > 0) return `+$${formatUsdt(numeric)}`;
+  if (numeric < 0) return `-$${formatUsdt(Math.abs(numeric))}`;
+  return "$0";
+}
+
+function formatCoinSide(value: string) {
+  return value === "HEADS" ? "正面" : "反面";
+}
+
+function formatGameResult(value: string) {
+  return value === "PLAYER_WIN" ? "玩家獲勝" : "莊家獲勝";
+}
+
 function walletLoginMessage(walletAddress: string) {
   return `Sign in to BSC GameFi Web with wallet ${walletAddress.toLowerCase()}`;
 }
@@ -108,6 +137,9 @@ export default function UserDashboard() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [coinFlipAmount, setCoinFlipAmount] = useState("10");
+  const [coinFlipChoice, setCoinFlipChoice] = useState<"HEADS" | "TAILS">("HEADS");
+  const [lastGameRound, setLastGameRound] = useState<GameRound | null>(null);
   const [chainBalance, setChainBalance] = useState("0");
   const [depositAllowance, setDepositAllowance] = useState("0");
   const [lastTxHash, setLastTxHash] = useState("");
@@ -303,6 +335,28 @@ export default function UserDashboard() {
     }
   }
 
+  async function playCoinFlip() {
+    setLoading(true);
+    setStatus("");
+    try {
+      const payload = await requestJson<{ round: GameRound }>("/api/games/coin-flip/play", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ amount: coinFlipAmount, choice: coinFlipChoice }),
+      });
+      setLastGameRound(payload.round);
+      setStatus(payload.round.result === "PLAYER_WIN" ? "猜硬幣結算：玩家獲勝。" : "猜硬幣結算：莊家獲勝。");
+      await loadMe();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "猜硬幣下注失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const user = data?.user;
   const recentActivity = [
     ...(data?.transactions || []).map((item) => ({ id: `tx-${item.id}`, type: item.type, amount: item.amount, status: item.status, txHash: item.txHash })),
@@ -418,10 +472,58 @@ export default function UserDashboard() {
                 <h2 className="text-base font-semibold text-white">遊戲</h2>
                 <p className="mt-1 text-sm text-zinc-400">遊戲會使用內部餘額下注，並在平台帳本內結算。</p>
               </div>
-              <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">預覽</span>
+              <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">MVP</span>
             </div>
             <div className="mt-5 divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
-              {games.map((game) => (
+              <div className="px-4 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">猜硬幣</h3>
+                    <p className="mt-1 text-xs text-zinc-500">選擇正面或反面，以內部餘額下注並立即結算。</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:w-24"
+                      inputMode="decimal"
+                      value={coinFlipAmount}
+                      onChange={(event) => setCoinFlipAmount(event.target.value)}
+                      aria-label="猜硬幣下注金額"
+                    />
+                    <div className="grid grid-cols-2 overflow-hidden rounded-md border border-zinc-700">
+                      <button
+                        className={coinFlipChoice === "HEADS" ? "bg-emerald-700 px-3 py-2 text-sm text-white" : "px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"}
+                        onClick={() => setCoinFlipChoice("HEADS")}
+                        type="button"
+                      >
+                        正面
+                      </button>
+                      <button
+                        className={coinFlipChoice === "TAILS" ? "bg-emerald-700 px-3 py-2 text-sm text-white" : "px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"}
+                        onClick={() => setCoinFlipChoice("TAILS")}
+                        type="button"
+                      >
+                        反面
+                      </button>
+                    </div>
+                    <button
+                      className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={playCoinFlip}
+                      disabled={!user?.walletAddress || loading}
+                      type="button"
+                    >
+                      下注
+                    </button>
+                  </div>
+                </div>
+                {lastGameRound ? (
+                  <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+                    <span>結果：{formatCoinSide(lastGameRound.outcome)}</span>
+                    <span>輸贏：{formatGameResult(lastGameRound.result)}</span>
+                    <span>餘額變化：{formatSignedUsdt(lastGameRound.userBalanceDelta)}</span>
+                  </div>
+                ) : null}
+              </div>
+              {games.slice(1).map((game) => (
                 <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" key={game.title}>
                   <div>
                     <h3 className="text-sm font-semibold text-white">{game.title}</h3>
@@ -437,6 +539,16 @@ export default function UserDashboard() {
                 </div>
               ))}
             </div>
+            {data?.gameRounds?.length ? (
+              <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950">
+                {data.gameRounds.slice(0, 3).map((round) => (
+                  <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-2 text-xs last:border-b-0" key={round.id}>
+                    <span className="text-zinc-400">{formatCoinSide(round.playerChoice)} / {formatCoinSide(round.outcome)}</span>
+                    <span className={round.result === "PLAYER_WIN" ? "font-mono text-emerald-300" : "font-mono text-red-300"}>{formatSignedUsdt(round.userBalanceDelta)}</span>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-5">
@@ -456,7 +568,7 @@ export default function UserDashboard() {
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-sm font-medium text-zinc-200">獎金池分配</p>
-                  <p className="mt-1 text-xs text-zinc-500">90% 遊戲獲利進入獎勵池，10% 進入平台金庫。</p>
+                  <p className="mt-1 text-xs text-zinc-500">遊戲正利潤依三池模型分配到平台收益、遊戲金庫與收益寶獎金池。</p>
                 </div>
                 <button className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-500" disabled>鎖倉即將開放</button>
               </div>

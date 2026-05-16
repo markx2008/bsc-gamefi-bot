@@ -19,6 +19,10 @@ export async function GET(request: Request) {
           orderBy: { createdAt: "desc" },
           take: 25,
         },
+        gameRounds: {
+          orderBy: { createdAt: "desc" },
+          take: 10,
+        },
       },
     });
 
@@ -57,6 +61,18 @@ export async function GET(request: Request) {
         reviewedBy: withdrawal.reviewedBy,
         reviewedAt: withdrawal.reviewedAt,
         createdAt: withdrawal.createdAt,
+      })),
+      gameRounds: user.gameRounds.map((round) => ({
+        id: round.id,
+        game: round.game,
+        betAmount: round.betAmount.toString(),
+        playerChoice: round.playerChoice,
+        outcome: round.outcome,
+        result: round.result,
+        payoutAmount: round.payoutAmount.toString(),
+        userBalanceDelta: round.userBalanceDelta.toString(),
+        houseProfit: round.houseProfit.toString(),
+        createdAt: round.createdAt,
       })),
       config: {
         vaultAddress: process.env.VAULT_ADDRESS || null,

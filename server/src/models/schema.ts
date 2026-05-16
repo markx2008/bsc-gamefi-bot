@@ -40,3 +40,31 @@ export interface WithdrawalRequest {
   createdAt: Date;
   updatedAt: Date;
 }
+
+export interface GameRound {
+  id: number;
+  userId: number;
+  game: 'COIN_FLIP' | 'DICE' | 'LUCKY_SPIN';
+  betAmount: string;
+  playerChoice: string;
+  outcome: string;
+  result: 'PLAYER_WIN' | 'HOUSE_WIN';
+  payoutAmount: string;
+  userBalanceDelta: string;
+  houseProfit: string;
+  platformCut: string;
+  gameBankrollDelta: string;
+  bonusPoolCut: string;
+  createdAt: Date;
+}
+
+export interface PlatformLedgerEntry {
+  id: number;
+  pool: 'GAME_BANKROLL' | 'PLATFORM_REVENUE' | 'EARN_BONUS_POOL';
+  source: 'GAME_ROUND' | 'EARN_EXTERNAL_YIELD' | 'ADMIN_ADJUSTMENT';
+  sourceId?: number | null;
+  gameRoundId?: number | null;
+  amount: string;
+  note?: string | null;
+  createdAt: Date;
+}

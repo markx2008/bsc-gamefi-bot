@@ -15,6 +15,7 @@ model User {
   updatedAt      DateTime            @updatedAt
   transactions   Transaction[]
   withdrawals    WithdrawalRequest[]
+  gameRounds     GameRound[]
 }
 
 model Transaction {
@@ -60,6 +61,44 @@ model WithdrawalRequest {
   updatedAt     DateTime         @updatedAt
 }
 
+model GameRound {
+  id                Int                   @id @default(autoincrement())
+  userId            Int
+  user              User                  @relation(fields: [userId], references: [id])
+  game              GameKey
+  betAmount         Decimal               @db.Decimal(36, 18)
+  playerChoice      String
+  outcome           String
+  result            GameRoundResult
+  payoutAmount      Decimal               @db.Decimal(36, 18)
+  userBalanceDelta  Decimal               @db.Decimal(36, 18)
+  houseProfit       Decimal               @db.Decimal(36, 18)
+  platformCut       Decimal               @default(0) @db.Decimal(36, 18)
+  gameBankrollDelta Decimal               @default(0) @db.Decimal(36, 18)
+  bonusPoolCut      Decimal               @default(0) @db.Decimal(36, 18)
+  createdAt         DateTime              @default(now())
+  ledgerEntries     PlatformLedgerEntry[]
+
+  @@index([userId, createdAt])
+  @@index([game, createdAt])
+}
+
+model PlatformLedgerEntry {
+  id        Int                      @id @default(autoincrement())
+  pool      PlatformPool
+  source    PlatformLedgerSourceType
+  sourceId  Int?
+  gameRoundId Int?
+  amount    Decimal                  @db.Decimal(36, 18)
+  note      String?
+  createdAt DateTime                 @default(now())
+  gameRound GameRound?               @relation(fields: [gameRoundId], references: [id])
+
+  @@index([pool, createdAt])
+  @@index([source, sourceId])
+  @@index([gameRoundId])
+}
+
 enum TransactionType {
   DEPOSIT
   WITHDRAW
@@ -86,4 +125,27 @@ enum WithdrawalStatus {
   REJECTED
   SENT
   FAILED
+}
+
+enum GameKey {
+  COIN_FLIP
+  DICE
+  LUCKY_SPIN
+}
+
+enum GameRoundResult {
+  PLAYER_WIN
+  HOUSE_WIN
+}
+
+enum PlatformPool {
+  GAME_BANKROLL
+  PLATFORM_REVENUE
+  EARN_BONUS_POOL
+}
+
+enum PlatformLedgerSourceType {
+  GAME_ROUND
+  EARN_EXTERNAL_YIELD
+  ADMIN_ADJUSTMENT
 }
