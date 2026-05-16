@@ -32,6 +32,7 @@ const errorLabels: Record<string, string> = {
   "Insufficient balance": "餘額不足。",
   "Invalid coin flip choice": "猜硬幣選項不正確。",
   "Invalid dice choice": "骰子選項不正確。",
+  "Invalid lucky spin segment": "幸運轉盤結果不正確。",
   "Invalid session signature": "登入簽章無效，請重新登入。",
   "Invalid session token": "登入狀態無效，請重新登入。",
   "Invalid user id": "使用者編號不正確。",

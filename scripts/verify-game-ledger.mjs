@@ -22,6 +22,9 @@ const ledger = await import(`file://${modulePath}`);
 const {
   calculateCoinFlipSettlement,
   calculateDiceSettlement,
+  calculateLuckySpinExpectedHouseEdgePercent,
+  calculateLuckySpinSettlement,
+  getLuckySpinMaxPlayerProfit,
   getDefaultGameLedgerConfig,
   normalizeCoinFlipChoice,
   normalizeDiceChoice,
@@ -144,5 +147,46 @@ assert.throws(() => calculateDiceSettlement({
   roll: 7,
   config: getDefaultGameLedgerConfig(),
 }), /Dice roll must be between 1 and 6/);
+
+{
+  const config = getDefaultGameLedgerConfig();
+  almostEqual(calculateLuckySpinExpectedHouseEdgePercent(config), 3);
+  almostEqual(getLuckySpinMaxPlayerProfit(100, config), 1097.345133);
+}
+
+{
+  const settlement = calculateLuckySpinSettlement({
+    betAmount: 100,
+    segment: "JACKPOT",
+    config: getDefaultGameLedgerConfig(),
+  });
+
+  assert.equal(settlement.result, "PLAYER_WIN");
+  assert.equal(settlement.segment, "JACKPOT");
+  almostEqual(settlement.userBalanceDelta, 1097.345133);
+  almostEqual(settlement.houseProfit, -1097.345133);
+  almostEqual(settlement.gameBankrollDelta, -1097.345133);
+}
+
+{
+  const settlement = calculateLuckySpinSettlement({
+    betAmount: 100,
+    segment: "MISS",
+    config: getDefaultGameLedgerConfig(),
+  });
+
+  assert.equal(settlement.result, "HOUSE_WIN");
+  assert.equal(settlement.segment, "MISS");
+  almostEqual(settlement.userBalanceDelta, -100);
+  almostEqual(settlement.platformCut, 5);
+  almostEqual(settlement.gameBankrollDelta, 90);
+  almostEqual(settlement.bonusPoolCut, 5);
+}
+
+assert.throws(() => calculateLuckySpinSettlement({
+  betAmount: 10,
+  segment: "BROKEN",
+  config: getDefaultGameLedgerConfig(),
+}), /Invalid lucky spin segment/);
 
 console.log("Game ledger checks passed");

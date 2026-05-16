@@ -41,7 +41,7 @@ flowchart LR
 - **入金：** 使用者先 `approve` MockUSDT，再呼叫 `VaultManager.deposit`；合約發出 `Deposit` event。
 - **入帳：** listener 掃到 `Deposit` event 後，依 wallet address 找到使用者，寫入 `Transaction` 並增加 `User.balanceUsdt`。
 - **提現：** 使用者送出提現申請，Admin 審核後由後端呼叫 `VaultManager.executeWithdrawal`。
-- **遊戲：** 小遊戲不直接碰使用者錢包，而是使用 DB 內部餘額下注與結算；目前已完成猜硬幣與骰子 MVP。
+- **遊戲：** 小遊戲不直接碰使用者錢包，而是使用 DB 內部餘額下注與結算；目前已完成猜硬幣、骰子與幸運轉盤 MVP。
 
 ## 核心機制：以賭養息 (Bet-to-Earn Equilibrium)
 - **遊戲盈餘：** 透過可設定的長期莊家優勢產生，預設試算值為 3%。
@@ -68,9 +68,9 @@ flowchart LR
 - [x] 後端儲值監聽器與 Prisma 帳務模型
 - [x] Web MVP wallet login、使用者資金流頁與 Admin 真資料後台
 - [x] 前端池子試算頁，用於比較遊戲流量、三池分配、收益寶資金、提款延遲與平台抽成比例
-- [x] 內部餘額遊戲帳務基礎、三池 ledger、猜硬幣與骰子 MVP
+- [x] 內部餘額遊戲帳務基礎、三池 ledger、猜硬幣、骰子與幸運轉盤 MVP
 - [ ] BSC Testnet 真入金端到端驗證
-- [ ] 幸運轉盤 Web 介面與金庫風控
+- [x] 高波動幸運轉盤金庫風控：下注前檢查遊戲金庫可承受最大頭獎派彩
 - [ ] 7 天鎖倉收益寶、浮動分紅、APY cap 與健康監控
 - [ ] BSC Testnet 部署與測試
 

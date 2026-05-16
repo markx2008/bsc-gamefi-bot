@@ -91,12 +91,6 @@ declare global {
 const TOKEN_KEY = "web_mvp_session_token";
 const TOKEN_DECIMALS = 18;
 
-const games = [
-  { title: "猜硬幣", text: "選擇正面或反面，使用內部餘額下注。", button: "開始猜硬幣" },
-  { title: "骰子", text: "選擇目標點數區間，依賠率結算輸贏。", button: "開始骰子" },
-  { title: "幸運轉盤", text: "使用獎池制分配回饋，適合做活動玩法。", button: "開始幸運轉盤" },
-];
-
 function formatUsdt(value: string | number | null | undefined) {
   const numeric = Number(value ?? 0);
   return numeric.toLocaleString("en-US", { maximumFractionDigits: 6 });
@@ -125,7 +119,18 @@ function formatDiceSide(value: string) {
 function formatGameRoundDetail(round: GameRound) {
   if (round.game === "COIN_FLIP") return `猜硬幣 ${formatCoinSide(round.playerChoice)} / ${formatCoinSide(round.outcome)}`;
   if (round.game === "DICE") return `骰子 ${formatDiceSide(round.playerChoice)} / ${round.outcome} 點`;
+  if (round.game === "LUCKY_SPIN") return `幸運轉盤 ${formatLuckySpinSegment(round.outcome)}`;
   return round.game;
+}
+
+function formatLuckySpinSegment(value: string) {
+  const labels: Record<string, string> = {
+    JACKPOT: "頭獎",
+    BIG_WIN: "大獎",
+    SMALL_WIN: "小獎",
+    MISS: "落空",
+  };
+  return labels[value] || value;
 }
 
 function formatGameResult(value: string) {
@@ -153,6 +158,8 @@ export default function UserDashboard() {
   const [diceAmount, setDiceAmount] = useState("10");
   const [diceChoice, setDiceChoice] = useState<"LOW" | "HIGH">("LOW");
   const [lastDiceRound, setLastDiceRound] = useState<GameRound | null>(null);
+  const [luckySpinAmount, setLuckySpinAmount] = useState("10");
+  const [lastLuckySpinRound, setLastLuckySpinRound] = useState<GameRound | null>(null);
   const [chainBalance, setChainBalance] = useState("0");
   const [depositAllowance, setDepositAllowance] = useState("0");
   const [lastTxHash, setLastTxHash] = useState("");
@@ -392,6 +399,28 @@ export default function UserDashboard() {
     }
   }
 
+  async function playLuckySpin() {
+    setLoading(true);
+    setStatus("");
+    try {
+      const payload = await requestJson<{ round: GameRound }>("/api/games/lucky-spin/play", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ amount: luckySpinAmount }),
+      });
+      setLastLuckySpinRound(payload.round);
+      setStatus(payload.round.result === "PLAYER_WIN" ? "幸運轉盤結算：玩家獲勝。" : "幸運轉盤結算：莊家獲勝。");
+      await loadMe();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "幸運轉盤下注失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const user = data?.user;
   const recentActivity = [
     ...(data?.transactions || []).map((item) => ({ id: `tx-${item.id}`, type: item.type, amount: item.amount, status: item.status, txHash: item.txHash })),
@@ -606,21 +635,38 @@ export default function UserDashboard() {
                   </div>
                 ) : null}
               </div>
-              {games.slice(2).map((game) => (
-                <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" key={game.title}>
+              <div className="px-4 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
                   <div>
-                    <h3 className="text-sm font-semibold text-white">{game.title}</h3>
-                    <p className="mt-1 text-xs text-zinc-500">{game.text}</p>
+                    <h3 className="text-sm font-semibold text-white">幸運轉盤</h3>
+                    <p className="mt-1 text-xs text-zinc-500">高波動玩法，下注前會先檢查遊戲金庫是否能承受頭獎。</p>
                   </div>
-                  <button
-                    className="inline-flex min-w-[132px] items-center justify-center rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950"
-                    onClick={() => setStatus(`${game.title} 功能尚未開放，之後會接內部餘額下注。`)}
-                    type="button"
-                  >
-                    {game.button}
-                  </button>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:w-24"
+                      inputMode="decimal"
+                      value={luckySpinAmount}
+                      onChange={(event) => setLuckySpinAmount(event.target.value)}
+                      aria-label="幸運轉盤下注金額"
+                    />
+                    <button
+                      className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={playLuckySpin}
+                      disabled={!user?.walletAddress || loading}
+                      type="button"
+                    >
+                      轉動
+                    </button>
+                  </div>
                 </div>
-              ))}
+                {lastLuckySpinRound ? (
+                  <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+                    <span>結果：{formatLuckySpinSegment(lastLuckySpinRound.outcome)}</span>
+                    <span>輸贏：{formatGameResult(lastLuckySpinRound.result)}</span>
+                    <span>餘額變化：{formatSignedUsdt(lastLuckySpinRound.userBalanceDelta)}</span>
+                  </div>
+                ) : null}
+              </div>
             </div>
             {data?.gameRounds?.length ? (
               <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950">

@@ -1,5 +1,6 @@
 export type CoinFlipChoice = "HEADS" | "TAILS";
 export type DiceChoice = "LOW" | "HIGH";
+export type LuckySpinSegment = "JACKPOT" | "BIG_WIN" | "SMALL_WIN" | "MISS";
 export type GameRoundResult = "PLAYER_WIN" | "HOUSE_WIN";
 
 export type GameLedgerConfig = {
@@ -51,6 +52,38 @@ export type DiceSettlement = {
   bonusPoolCut: number;
 };
 
+export type LuckySpinSettlementInput = {
+  betAmount: number;
+  segment: LuckySpinSegment | string;
+  config: GameLedgerConfig;
+};
+
+export type LuckySpinSettlement = {
+  result: GameRoundResult;
+  betAmount: number;
+  segment: LuckySpinSegment;
+  playerProfit: number;
+  payoutAmount: number;
+  userBalanceDelta: number;
+  houseProfit: number;
+  platformCut: number;
+  gameBankrollDelta: number;
+  bonusPoolCut: number;
+};
+
+type LuckySpinSegmentConfig = {
+  segment: LuckySpinSegment;
+  probability: number;
+  baseProfitMultiplier: number;
+};
+
+const LUCKY_SPIN_SEGMENTS: LuckySpinSegmentConfig[] = [
+  { segment: "JACKPOT", probability: 0.02, baseProfitMultiplier: 10 },
+  { segment: "BIG_WIN", probability: 0.08, baseProfitMultiplier: 3 },
+  { segment: "SMALL_WIN", probability: 0.25, baseProfitMultiplier: 0.5 },
+  { segment: "MISS", probability: 0.65, baseProfitMultiplier: -1 },
+];
+
 export function getDefaultGameLedgerConfig(): GameLedgerConfig {
   return {
     houseEdgePercent: 3,
@@ -69,6 +102,14 @@ export function normalizeDiceChoice(choice: string): DiceChoice {
   const normalized = choice.trim().toUpperCase();
   if (normalized === "LOW" || normalized === "HIGH") return normalized;
   throw new Error("Invalid dice choice");
+}
+
+export function normalizeLuckySpinSegment(segment: string): LuckySpinSegment {
+  const normalized = segment.trim().toUpperCase();
+  if (normalized === "JACKPOT" || normalized === "BIG_WIN" || normalized === "SMALL_WIN" || normalized === "MISS") {
+    return normalized;
+  }
+  throw new Error("Invalid lucky spin segment");
 }
 
 export function calculateCoinFlipSettlement(input: CoinFlipSettlementInput): CoinFlipSettlement {
@@ -132,6 +173,60 @@ export function calculateDiceSettlement(input: DiceSettlementInput): DiceSettlem
   };
 }
 
+export function calculateLuckySpinSettlement(input: LuckySpinSettlementInput): LuckySpinSettlement {
+  const betAmount = Number(input.betAmount);
+  if (!Number.isFinite(betAmount) || betAmount <= 0) throw new Error("Bet amount must be > 0");
+
+  const segment = normalizeLuckySpinSegment(input.segment);
+  const segmentConfig = LUCKY_SPIN_SEGMENTS.find((item) => item.segment === segment);
+  if (!segmentConfig) throw new Error("Invalid lucky spin segment");
+
+  if (segmentConfig.baseProfitMultiplier > 0) {
+    const playerProfit = roundMoney(betAmount * segmentConfig.baseProfitMultiplier * luckySpinWinScale(input.config));
+    return {
+      result: "PLAYER_WIN",
+      betAmount,
+      segment,
+      playerProfit,
+      payoutAmount: roundMoney(betAmount + playerProfit),
+      userBalanceDelta: playerProfit,
+      houseProfit: -playerProfit,
+      platformCut: 0,
+      gameBankrollDelta: -playerProfit,
+      bonusPoolCut: 0,
+    };
+  }
+
+  const distribution = calculatePositiveHouseProfitDistribution(betAmount, input.config);
+  return {
+    result: "HOUSE_WIN",
+    betAmount,
+    segment,
+    playerProfit: -betAmount,
+    payoutAmount: 0,
+    userBalanceDelta: -betAmount,
+    houseProfit: betAmount,
+    platformCut: distribution.platformCut,
+    gameBankrollDelta: distribution.gameBankrollReserve,
+    bonusPoolCut: distribution.bonusPoolCut,
+  };
+}
+
+export function getLuckySpinMaxPlayerProfit(betAmount: number, config: GameLedgerConfig) {
+  const maxBaseMultiplier = Math.max(...LUCKY_SPIN_SEGMENTS.map((segment) => segment.baseProfitMultiplier));
+  return roundMoney(betAmount * maxBaseMultiplier * luckySpinWinScale(config));
+}
+
+export function calculateLuckySpinExpectedHouseEdgePercent(config: GameLedgerConfig) {
+  const expectedPlayerProfitMultiplier = LUCKY_SPIN_SEGMENTS.reduce((total, segment) => {
+    if (segment.baseProfitMultiplier > 0) {
+      return total + (segment.probability * segment.baseProfitMultiplier * luckySpinWinScale(config));
+    }
+    return total + (segment.probability * segment.baseProfitMultiplier);
+  }, 0);
+  return roundMoney(-expectedPlayerProfitMultiplier * 100);
+}
+
 function calculateBinarySettlement(input: {
   betAmount: number;
   playerChoice: CoinFlipChoice | DiceChoice;
@@ -174,6 +269,19 @@ function calculateBinarySettlement(input: {
     gameBankrollDelta: distribution.gameBankrollReserve,
     bonusPoolCut: distribution.bonusPoolCut,
   };
+}
+
+function luckySpinWinScale(config: GameLedgerConfig) {
+  const targetHouseEdge = clampPercent(config.houseEdgePercent) / 100;
+  const lossProbability = LUCKY_SPIN_SEGMENTS
+    .filter((segment) => segment.baseProfitMultiplier < 0)
+    .reduce((total, segment) => total + segment.probability, 0);
+  const weightedWinMultiplier = LUCKY_SPIN_SEGMENTS
+    .filter((segment) => segment.baseProfitMultiplier > 0)
+    .reduce((total, segment) => total + (segment.probability * segment.baseProfitMultiplier), 0);
+
+  if (weightedWinMultiplier <= 0) return 0;
+  return Math.max(0, (lossProbability - targetHouseEdge) / weightedWinMultiplier);
 }
 
 export function calculatePositiveHouseProfitDistribution(profit: number, config: GameLedgerConfig) {
