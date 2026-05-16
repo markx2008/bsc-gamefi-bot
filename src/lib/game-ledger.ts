@@ -1,4 +1,5 @@
 export type CoinFlipChoice = "HEADS" | "TAILS";
+export type DiceChoice = "LOW" | "HIGH";
 export type GameRoundResult = "PLAYER_WIN" | "HOUSE_WIN";
 
 export type GameLedgerConfig = {
@@ -28,6 +29,28 @@ export type CoinFlipSettlement = {
   bonusPoolCut: number;
 };
 
+export type DiceSettlementInput = {
+  betAmount: number;
+  playerChoice: DiceChoice | string;
+  roll: number;
+  config: GameLedgerConfig;
+};
+
+export type DiceSettlement = {
+  result: GameRoundResult;
+  betAmount: number;
+  playerChoice: DiceChoice;
+  outcome: DiceChoice;
+  roll: number;
+  playerProfit: number;
+  payoutAmount: number;
+  userBalanceDelta: number;
+  houseProfit: number;
+  platformCut: number;
+  gameBankrollDelta: number;
+  bonusPoolCut: number;
+};
+
 export function getDefaultGameLedgerConfig(): GameLedgerConfig {
   return {
     houseEdgePercent: 3,
@@ -40,6 +63,12 @@ export function normalizeCoinFlipChoice(choice: string): CoinFlipChoice {
   const normalized = choice.trim().toUpperCase();
   if (normalized === "HEADS" || normalized === "TAILS") return normalized;
   throw new Error("Invalid coin flip choice");
+}
+
+export function normalizeDiceChoice(choice: string): DiceChoice {
+  const normalized = choice.trim().toUpperCase();
+  if (normalized === "LOW" || normalized === "HIGH") return normalized;
+  throw new Error("Invalid dice choice");
 }
 
 export function calculateCoinFlipSettlement(input: CoinFlipSettlementInput): CoinFlipSettlement {
@@ -73,6 +102,70 @@ export function calculateCoinFlipSettlement(input: CoinFlipSettlementInput): Coi
     betAmount,
     playerChoice,
     outcome,
+    playerProfit: -betAmount,
+    payoutAmount: 0,
+    userBalanceDelta: -betAmount,
+    houseProfit: betAmount,
+    platformCut: distribution.platformCut,
+    gameBankrollDelta: distribution.gameBankrollReserve,
+    bonusPoolCut: distribution.bonusPoolCut,
+  };
+}
+
+export function calculateDiceSettlement(input: DiceSettlementInput): DiceSettlement {
+  const roll = Math.trunc(input.roll);
+  if (roll < 1 || roll > 6) throw new Error("Dice roll must be between 1 and 6");
+  const playerChoice = normalizeDiceChoice(input.playerChoice);
+  const outcome: DiceChoice = roll <= 3 ? "LOW" : "HIGH";
+  const settlement = calculateBinarySettlement({
+    betAmount: input.betAmount,
+    playerChoice,
+    outcome,
+    config: input.config,
+  });
+
+  return {
+    ...settlement,
+    playerChoice,
+    outcome,
+    roll,
+  };
+}
+
+function calculateBinarySettlement(input: {
+  betAmount: number;
+  playerChoice: CoinFlipChoice | DiceChoice;
+  outcome: CoinFlipChoice | DiceChoice;
+  config: GameLedgerConfig;
+}): CoinFlipSettlement {
+  const betAmount = Number(input.betAmount);
+  if (!Number.isFinite(betAmount) || betAmount <= 0) throw new Error("Bet amount must be > 0");
+
+  const result: GameRoundResult = input.playerChoice === input.outcome ? "PLAYER_WIN" : "HOUSE_WIN";
+
+  if (result === "PLAYER_WIN") {
+    const playerProfit = roundMoney(betAmount * playerProfitMultiplier(input.config.houseEdgePercent));
+    return {
+      result,
+      betAmount,
+      playerChoice: input.playerChoice as CoinFlipChoice,
+      outcome: input.outcome as CoinFlipChoice,
+      playerProfit,
+      payoutAmount: roundMoney(betAmount + playerProfit),
+      userBalanceDelta: playerProfit,
+      houseProfit: -playerProfit,
+      platformCut: 0,
+      gameBankrollDelta: -playerProfit,
+      bonusPoolCut: 0,
+    };
+  }
+
+  const distribution = calculatePositiveHouseProfitDistribution(betAmount, input.config);
+  return {
+    result,
+    betAmount,
+    playerChoice: input.playerChoice as CoinFlipChoice,
+    outcome: input.outcome as CoinFlipChoice,
     playerProfit: -betAmount,
     payoutAmount: 0,
     userBalanceDelta: -betAmount,

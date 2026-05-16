@@ -118,6 +118,16 @@ function formatCoinSide(value: string) {
   return value === "HEADS" ? "正面" : "反面";
 }
 
+function formatDiceSide(value: string) {
+  return value === "LOW" ? "小" : "大";
+}
+
+function formatGameRoundDetail(round: GameRound) {
+  if (round.game === "COIN_FLIP") return `猜硬幣 ${formatCoinSide(round.playerChoice)} / ${formatCoinSide(round.outcome)}`;
+  if (round.game === "DICE") return `骰子 ${formatDiceSide(round.playerChoice)} / ${round.outcome} 點`;
+  return round.game;
+}
+
 function formatGameResult(value: string) {
   return value === "PLAYER_WIN" ? "玩家獲勝" : "莊家獲勝";
 }
@@ -140,6 +150,9 @@ export default function UserDashboard() {
   const [coinFlipAmount, setCoinFlipAmount] = useState("10");
   const [coinFlipChoice, setCoinFlipChoice] = useState<"HEADS" | "TAILS">("HEADS");
   const [lastGameRound, setLastGameRound] = useState<GameRound | null>(null);
+  const [diceAmount, setDiceAmount] = useState("10");
+  const [diceChoice, setDiceChoice] = useState<"LOW" | "HIGH">("LOW");
+  const [lastDiceRound, setLastDiceRound] = useState<GameRound | null>(null);
   const [chainBalance, setChainBalance] = useState("0");
   const [depositAllowance, setDepositAllowance] = useState("0");
   const [lastTxHash, setLastTxHash] = useState("");
@@ -357,6 +370,28 @@ export default function UserDashboard() {
     }
   }
 
+  async function playDice() {
+    setLoading(true);
+    setStatus("");
+    try {
+      const payload = await requestJson<{ round: GameRound }>("/api/games/dice/play", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ amount: diceAmount, choice: diceChoice }),
+      });
+      setLastDiceRound(payload.round);
+      setStatus(payload.round.result === "PLAYER_WIN" ? "骰子結算：玩家獲勝。" : "骰子結算：莊家獲勝。");
+      await loadMe();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "骰子下注失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   const user = data?.user;
   const recentActivity = [
     ...(data?.transactions || []).map((item) => ({ id: `tx-${item.id}`, type: item.type, amount: item.amount, status: item.status, txHash: item.txHash })),
@@ -523,7 +558,55 @@ export default function UserDashboard() {
                   </div>
                 ) : null}
               </div>
-              {games.slice(1).map((game) => (
+              <div className="px-4 py-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                  <div>
+                    <h3 className="text-sm font-semibold text-white">骰子</h3>
+                    <p className="mt-1 text-xs text-zinc-500">選擇小或大，擲出 1-3 為小、4-6 為大。</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    <input
+                      className="w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500 sm:w-24"
+                      inputMode="decimal"
+                      value={diceAmount}
+                      onChange={(event) => setDiceAmount(event.target.value)}
+                      aria-label="骰子下注金額"
+                    />
+                    <div className="grid grid-cols-2 overflow-hidden rounded-md border border-zinc-700">
+                      <button
+                        className={diceChoice === "LOW" ? "bg-emerald-700 px-3 py-2 text-sm text-white" : "px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"}
+                        onClick={() => setDiceChoice("LOW")}
+                        type="button"
+                      >
+                        小
+                      </button>
+                      <button
+                        className={diceChoice === "HIGH" ? "bg-emerald-700 px-3 py-2 text-sm text-white" : "px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-900"}
+                        onClick={() => setDiceChoice("HIGH")}
+                        type="button"
+                      >
+                        大
+                      </button>
+                    </div>
+                    <button
+                      className="inline-flex min-w-[96px] items-center justify-center rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60"
+                      onClick={playDice}
+                      disabled={!user?.walletAddress || loading}
+                      type="button"
+                    >
+                      下注
+                    </button>
+                  </div>
+                </div>
+                {lastDiceRound ? (
+                  <div className="mt-3 grid gap-2 text-xs text-zinc-400 sm:grid-cols-3">
+                    <span>點數：{lastDiceRound.outcome}</span>
+                    <span>輸贏：{formatGameResult(lastDiceRound.result)}</span>
+                    <span>餘額變化：{formatSignedUsdt(lastDiceRound.userBalanceDelta)}</span>
+                  </div>
+                ) : null}
+              </div>
+              {games.slice(2).map((game) => (
                 <div className="flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between" key={game.title}>
                   <div>
                     <h3 className="text-sm font-semibold text-white">{game.title}</h3>
@@ -543,7 +626,7 @@ export default function UserDashboard() {
               <div className="mt-4 rounded-lg border border-zinc-800 bg-zinc-950">
                 {data.gameRounds.slice(0, 3).map((round) => (
                   <div className="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-2 text-xs last:border-b-0" key={round.id}>
-                    <span className="text-zinc-400">{formatCoinSide(round.playerChoice)} / {formatCoinSide(round.outcome)}</span>
+                    <span className="text-zinc-400">{formatGameRoundDetail(round)}</span>
                     <span className={round.result === "PLAYER_WIN" ? "font-mono text-emerald-300" : "font-mono text-red-300"}>{formatSignedUsdt(round.userBalanceDelta)}</span>
                   </div>
                 ))}

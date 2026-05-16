@@ -21,8 +21,10 @@ await writeFile(modulePath, output.outputText, "utf8");
 const ledger = await import(`file://${modulePath}`);
 const {
   calculateCoinFlipSettlement,
+  calculateDiceSettlement,
   getDefaultGameLedgerConfig,
   normalizeCoinFlipChoice,
+  normalizeDiceChoice,
 } = ledger;
 
 function almostEqual(actual, expected, tolerance = 0.000001) {
@@ -40,6 +42,9 @@ function almostEqual(actual, expected, tolerance = 0.000001) {
   assert.equal(normalizeCoinFlipChoice("heads"), "HEADS");
   assert.equal(normalizeCoinFlipChoice("TAILS"), "TAILS");
   assert.throws(() => normalizeCoinFlipChoice("edge"), /Invalid coin flip choice/);
+  assert.equal(normalizeDiceChoice("low"), "LOW");
+  assert.equal(normalizeDiceChoice("HIGH"), "HIGH");
+  assert.throws(() => normalizeDiceChoice("middle"), /Invalid dice choice/);
 }
 
 {
@@ -101,5 +106,43 @@ assert.throws(() => calculateCoinFlipSettlement({
   outcome: "TAILS",
   config: getDefaultGameLedgerConfig(),
 }), /Bet amount must be > 0/);
+
+{
+  const settlement = calculateDiceSettlement({
+    betAmount: 100,
+    playerChoice: "LOW",
+    roll: 3,
+    config: getDefaultGameLedgerConfig(),
+  });
+
+  assert.equal(settlement.result, "PLAYER_WIN");
+  assert.equal(settlement.outcome, "LOW");
+  almostEqual(settlement.userBalanceDelta, 94);
+  almostEqual(settlement.houseProfit, -94);
+  almostEqual(settlement.gameBankrollDelta, -94);
+}
+
+{
+  const settlement = calculateDiceSettlement({
+    betAmount: 100,
+    playerChoice: "LOW",
+    roll: 6,
+    config: getDefaultGameLedgerConfig(),
+  });
+
+  assert.equal(settlement.result, "HOUSE_WIN");
+  assert.equal(settlement.outcome, "HIGH");
+  almostEqual(settlement.userBalanceDelta, -100);
+  almostEqual(settlement.platformCut, 5);
+  almostEqual(settlement.gameBankrollDelta, 90);
+  almostEqual(settlement.bonusPoolCut, 5);
+}
+
+assert.throws(() => calculateDiceSettlement({
+  betAmount: 10,
+  playerChoice: "LOW",
+  roll: 7,
+  config: getDefaultGameLedgerConfig(),
+}), /Dice roll must be between 1 and 6/);
 
 console.log("Game ledger checks passed");
