@@ -199,6 +199,31 @@ function findEffect(event, label) {
 {
   const config = {
     ...getDefaultSimulatorConfig(),
+    seed: 42,
+    playerArrivalMin: 20,
+    playerArrivalMax: 20,
+    gameTrafficPercent: 100,
+    stakingTrafficPercent: 0,
+    withdrawalRequestPercent: 0,
+    houseEdgePercent: 3,
+  };
+  const state = runSimulation(config, 5000);
+  const gameTotals = Object.values(state.summary.gameStats).reduce((totals, stats) => {
+    totals.totalBetAmount += stats.totalBetAmount;
+    totals.houseNetProfit += stats.houseNetProfit;
+    return totals;
+  }, { totalBetAmount: 0, houseNetProfit: 0 });
+  const realizedHouseEdge = (gameTotals.houseNetProfit / gameTotals.totalBetAmount) * 100;
+
+  assert.ok(
+    Math.abs(realizedHouseEdge - config.houseEdgePercent) < 0.4,
+    `long-run house edge should stay near ${config.houseEdgePercent}%, got ${realizedHouseEdge}%`,
+  );
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
     seed: 2,
     initialGameBankroll: 1000,
     initialBonusPool: 0,
@@ -217,13 +242,13 @@ function findEffect(event, label) {
   const gameEvent = state.events.find((event) => event.type === "game");
 
   assert.ok(gameEvent.amount < 0, "fixed seed should produce a player win");
-  almostEqual(state.summary.gameBankroll, 913);
-  almostEqual(state.summary.userWithdrawableBalance, 87);
+  almostEqual(state.summary.gameBankroll, 910);
+  almostEqual(state.summary.userWithdrawableBalance, 90);
   almostEqual(state.summary.platformLiquidity, 1000);
   almostEqual(state.summary.gameStats.coinFlip.rounds, 1);
   almostEqual(state.summary.gameStats.coinFlip.totalBetAmount, 100);
-  almostEqual(state.summary.gameStats.coinFlip.houseNetProfit, -87);
-  almostEqual(state.summary.gameStats.coinFlip.playerWinAmount, 87);
+  almostEqual(state.summary.gameStats.coinFlip.houseNetProfit, -90);
+  almostEqual(state.summary.gameStats.coinFlip.playerWinAmount, 90);
   almostEqual(state.summary.gameStats.coinFlip.houseWinAmount, 0);
   almostEqual(state.summary.gameStats.coinFlip.playerWinRounds, 1);
   almostEqual(state.summary.gameStats.coinFlip.houseWinRounds, 0);
@@ -250,8 +275,8 @@ function findEffect(event, label) {
   };
   const state = stepSimulator(config, createInitialSimulatorState(config));
 
-  almostEqual(state.summary.earnStats.gameSubsidyIncome, 4.65);
-  almostEqual(state.summary.earnStats.gameSubsidyIncome - state.summary.earnStats.rewardsAccrued, 4.65);
+  almostEqual(state.summary.earnStats.gameSubsidyIncome, 4.5);
+  almostEqual(state.summary.earnStats.gameSubsidyIncome - state.summary.earnStats.rewardsAccrued, 4.5);
 }
 
 {
@@ -262,12 +287,24 @@ function findEffect(event, label) {
     playerArrivalMax: 3,
     gameTrafficPercent: 75,
     stakingTrafficPercent: 25,
-    healthyApyPercent: 20,
+    healthyApyPercent: 0,
   };
   const sweep = sweepPlatformFees(config, [10, 20], 160);
 
   assert.equal(sweep.scenarios.length, 2);
   assert.ok([10, 20].includes(sweep.recommendedFeePercent), "sweep recommends one of the tested fee options");
+}
+
+{
+  const config = getDefaultSimulatorConfig();
+  const sweep = sweepPlatformFees(config, [5, 10, 15, 20, 25, 30], 11471);
+
+  assert.equal(
+    sweep.recommendedFeePercent,
+    null,
+    "fee sweep should not recommend a fee when every scenario fails health checks",
+  );
+  assert.equal(sweep.scenarios.every((scenario) => scenario.isHealthy === false), true);
 }
 
 {
@@ -328,6 +365,56 @@ function findEffect(event, label) {
   state = stepSimulator(config, state);
 
   almostEqual(state.summary.instantApyPercent, 15);
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
+    initialBonusPool: 0,
+    playerArrivalMin: 0,
+    playerArrivalMax: 0,
+    withdrawalRequestPercent: 0,
+    tickHours: 24,
+    externalEarnApyPercent: 36.5,
+  };
+  let state = createInitialSimulatorState(config);
+  state = {
+    ...state,
+    lockedPositions: [{ amount: 1000, unlockHour: 168, createdHour: 0, rewardAccrued: 0 }],
+    summary: {
+      ...state.summary,
+      lockedPrincipal: 1000,
+      platformLiquidity: 100,
+    },
+  };
+  state = stepSimulator(config, state);
+
+  almostEqual(state.summary.earnStats.externalYieldIncome, 1);
+  almostEqual(state.summary.platformLiquidity, 101);
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
+    playerArrivalMin: 0,
+    playerArrivalMax: 0,
+    withdrawalRequestPercent: 0,
+    tickHours: 24,
+  };
+  let state = createInitialSimulatorState(config);
+  state = {
+    ...state,
+    lockedPositions: [{ amount: 1000, unlockHour: 24, createdHour: 0, rewardAccrued: 10 }],
+    summary: {
+      ...state.summary,
+      lockedPrincipal: 1000,
+    },
+  };
+  state = stepSimulator(config, state);
+
+  almostEqual(state.summary.earnStats.maturedPrincipal, 1000);
+  almostEqual(state.summary.earnStats.rewardsReleased, 10);
+  almostEqual(state.summary.realizedApyPercent, 52.142857142857146);
 }
 
 {
@@ -512,6 +599,19 @@ function findEffect(event, label) {
     state.summary.withdrawalShortfall <= state.summary.pendingWithdrawals + 0.000001,
     `withdrawal shortfall ${state.summary.withdrawalShortfall} cannot exceed pending withdrawals ${state.summary.pendingWithdrawals}`,
   );
+}
+
+{
+  const config = getDefaultSimulatorConfig();
+  const state = runSimulation(config, 11471);
+  const sweep = sweepPlatformFees(config, [5, 10, 15], state.summary.tick);
+  const currentFeeScenario = sweep.scenarios.find((scenario) => scenario.feePercent === config.platformFeePercent);
+
+  assert.ok(currentFeeScenario, "fee sweep should include the current platform fee");
+  almostEqual(currentFeeScenario.summary.bonusPool, state.summary.bonusPool);
+  almostEqual(currentFeeScenario.summary.rewardsPaid, state.summary.rewardsPaid);
+  almostEqual(currentFeeScenario.summary.instantApyPercent, state.summary.instantApyPercent);
+  almostEqual(currentFeeScenario.summary.realizedApyPercent, state.summary.realizedApyPercent);
 }
 
 {

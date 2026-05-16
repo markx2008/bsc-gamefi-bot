@@ -49,6 +49,21 @@ function formatPercent(value: number) {
   });
 }
 
+function formatScenarioStatus(
+  scenario: ReturnType<typeof sweepPlatformFees>["scenarios"][number],
+  healthyApyPercent: number,
+) {
+  if (scenario.isHealthy) return "健康";
+
+  const reasons: string[] = [];
+  if (scenario.summary.instantApyPercent < healthyApyPercent) reasons.push("APY 未達");
+  if (scenario.summary.withdrawalShortfall !== 0) reasons.push("提款逾期");
+  if (scenario.summary.gameBankroll < 0) reasons.push("金庫透支");
+  if (scenario.summary.warningCount > 0) reasons.push("警告");
+
+  return reasons.length > 0 ? reasons.join(" / ") : "未達門檻";
+}
+
 function periodCapToApy(periodCapPercent: number, lockDays: number) {
   return periodCapPercent * (365 / Math.max(lockDays, 1 / 24));
 }
@@ -157,7 +172,9 @@ export default function SimulatorPage() {
   const feeSweep = useMemo(() => sweepPlatformFees(config, FEE_SWEEP_VALUES, feeSweepTicks), [config, feeSweepTicks]);
   const tenPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 10 }, feeSweepTicks).summary, [config, feeSweepTicks]);
   const twentyPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 20 }, feeSweepTicks).summary, [config, feeSweepTicks]);
-  const recommendedScenario = feeSweep.scenarios.find((scenario) => scenario.feePercent === feeSweep.recommendedFeePercent);
+  const recommendedScenario = feeSweep.recommendedFeePercent === null
+    ? null
+    : feeSweep.scenarios.find((scenario) => scenario.feePercent === feeSweep.recommendedFeePercent);
   const apyHealthy = summary.instantApyPercent >= safeConfig.healthyApyPercent;
   const hasWithdrawalAccountingError = summary.withdrawalShortfall < -0.000001;
   const earnPoolPercent = Math.max(0, 100 - safeConfig.platformFeePercent - safeConfig.gameBankrollReservePercent);
@@ -324,7 +341,7 @@ export default function SimulatorPage() {
                           <td className="px-3 py-2 font-mono text-zinc-200">{formatPercent(scenario.summary.instantApyPercent)}%</td>
                           <td className="px-3 py-2 font-mono text-zinc-200">{formatPercent(scenario.summary.realizedApyPercent)}%</td>
                           <td className={scenario.summary.withdrawalShortfall !== 0 ? "px-3 py-2 font-mono text-red-300" : "px-3 py-2 font-mono text-zinc-200"}>${formatMoney(scenario.summary.withdrawalShortfall)}</td>
-                          <td className={scenario.isHealthy ? "px-3 py-2 text-emerald-300" : "px-3 py-2 text-amber-300"}>{scenario.isHealthy ? "健康" : "未達門檻"}</td>
+                          <td className={scenario.isHealthy ? "px-3 py-2 text-emerald-300" : "px-3 py-2 text-amber-300"}>{formatScenarioStatus(scenario, safeConfig.healthyApyPercent)}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -335,8 +352,10 @@ export default function SimulatorPage() {
                     <span className="text-xs">推薦抽成</span>
                     <Trophy size={16} />
                   </div>
-                  <p className="mt-3 text-3xl font-semibold text-white">{feeSweep.recommendedFeePercent}%</p>
-                    <p className="mt-2 text-sm text-zinc-400">以目前 T+{feeSweepTicks} 重跑同一組 seed。規則：即時 APY 高於門檻、逾期未付為 0、金庫無警告時，選平台收益最高的抽成。</p>
+                  <p className={recommendedScenario ? "mt-3 text-3xl font-semibold text-white" : "mt-3 text-3xl font-semibold text-amber-300"}>
+                    {recommendedScenario ? `${feeSweep.recommendedFeePercent}%` : "無合格方案"}
+                  </p>
+                  <p className="mt-2 text-sm text-zinc-400">以目前 T+{feeSweepTicks} 重跑同一組 seed。規則：即時 APY 高於門檻、逾期未付為 0、金庫無警告時，才推薦平台收益最高的健康抽成。</p>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                     <CompareTile label="10% 收益" value={`$${formatMoney(tenPercent.platformRevenue)}`} />
                     <CompareTile label="20% 收益" value={`$${formatMoney(twentyPercent.platformRevenue)}`} />
@@ -349,7 +368,11 @@ export default function SimulatorPage() {
                     <p className="mt-4 rounded-md border border-zinc-800 bg-zinc-900 p-3 text-xs text-zinc-400">
                       目前 seed 下，{recommendedScenario.feePercent}% 抽成的試算平台收益為 ${formatMoney(recommendedScenario.summary.platformRevenue)}，即時 APY 為 {formatPercent(recommendedScenario.summary.instantApyPercent)}%。
                     </p>
-                  ) : null}
+                  ) : (
+                    <p className="mt-4 rounded-md border border-amber-900/60 bg-amber-950/20 p-3 text-xs text-amber-200">
+                      目前 seed 下沒有任何抽成同時滿足 APY 門檻、提款與金庫健康條件。
+                    </p>
+                  )}
                 </div>
               </div>
             </Panel>

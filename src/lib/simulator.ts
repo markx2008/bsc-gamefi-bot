@@ -117,7 +117,7 @@ export type FeeScenario = {
 };
 
 export type FeeSweepResult = {
-  recommendedFeePercent: number;
+  recommendedFeePercent: number | null;
   scenarios: FeeScenario[];
 };
 
@@ -469,6 +469,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   const externalYield = beforeRewardLockedPrincipal * (normalizedConfig.externalEarnApyPercent / 100) * (normalizedConfig.tickHours / (365 * 24));
   if (externalYield > 0) {
     bonusPool += externalYield;
+    platformLiquidity += externalYield;
     earnStats.externalYieldIncome += externalYield;
   }
   const shouldDistribute = crossedDayBoundary(previousHours, currentHours);
@@ -589,8 +590,8 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   const instantApyPercent = lockedPrincipal > 0
     ? Math.min(fundedPeriodYieldPercent, normalizedConfig.stakingPeriodRewardCapPercent) * (365 / Math.max(normalizedConfig.stakingLockDays, 1 / 24))
     : 0;
-  const realizedApyPercent = lockedPrincipal > 0 && simulatedDays > 0
-    ? (rewardsPaid / lockedPrincipal) * (365 / simulatedDays) * 100
+  const realizedApyPercent = earnStats.maturedPrincipal > 0
+    ? (earnStats.rewardsReleased / earnStats.maturedPrincipal) * (365 / Math.max(normalizedConfig.stakingLockDays, 1 / 24)) * 100
     : 0;
   const summary: SimulatorSummary = {
     tick: nextTick,
@@ -640,15 +641,13 @@ export function sweepPlatformFees(config: SimulatorConfig, fees: number[], ticks
     };
   });
 
-  const healthyScenarios = scenarios.filter((scenario) => scenario.isHealthy);
-  const candidates = healthyScenarios.length > 0 ? healthyScenarios : scenarios;
-  const recommended = [...candidates].sort((left, right) => {
+  const recommended = [...scenarios.filter((scenario) => scenario.isHealthy)].sort((left, right) => {
     if (right.score !== left.score) return right.score - left.score;
     return right.feePercent - left.feePercent;
   })[0];
 
   return {
-    recommendedFeePercent: recommended?.feePercent ?? fees[0] ?? normalizedConfig.platformFeePercent,
+    recommendedFeePercent: recommended?.feePercent ?? null,
     scenarios,
   };
 }
@@ -789,14 +788,13 @@ function simulateGameProfit(seed: number, game: GameKey, betSize: number, houseE
   const result = randomFloat(seed);
   const edge = houseEdgePercent / 100;
   const volatility = GAME_VOLATILITY[game];
-  const playerWinChance = Math.max(0.02, Math.min(0.98, (1 - edge) / 2));
+  const playerWinChance = Math.max(0.02, Math.min(0.98, (1 - (edge / volatility)) / 2));
   const playerWins = result.value < playerWinChance;
-  const houseExpectedProfit = betSize * edge;
   const swing = betSize * volatility;
 
   return {
     seed: result.seed,
-    value: playerWins ? houseExpectedProfit - swing : houseExpectedProfit + swing,
+    value: playerWins ? -swing : swing,
   };
 }
 
