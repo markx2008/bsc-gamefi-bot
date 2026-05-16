@@ -1,5 +1,7 @@
 import { Prisma } from "@prisma/client";
+import { calculateAdminHealth } from "@/lib/admin-health";
 import { assertAdminSession, getBearerSession } from "@/lib/auth";
+import { getEarnConfigFromEnv } from "@/lib/earn-ledger";
 import { getPrisma } from "@/lib/prisma";
 import { NextResponse } from "next/server";
 
@@ -11,6 +13,10 @@ function decimalToString(value: Prisma.Decimal | null | undefined) {
 
 function getInitialGameBankroll() {
   return new Prisma.Decimal(process.env.INITIAL_GAME_BANKROLL_USDT || "95000");
+}
+
+function getHealthyApyThresholdPercent() {
+  return Number(process.env.HEALTHY_APY_THRESHOLD_PERCENT || "20");
 }
 
 export async function GET(request: Request) {
@@ -32,6 +38,7 @@ export async function GET(request: Request) {
       earnActive,
       earnRedeemable,
       earnExternalYield,
+      redeemedEarnPositions,
     ] = await Promise.all([
       prisma.user.aggregate({ _sum: { balanceUsdt: true }, _count: true }),
       prisma.transaction.aggregate({
@@ -80,6 +87,16 @@ export async function GET(request: Request) {
         where: { source: "EARN_EXTERNAL_YIELD" },
         _sum: { amount: true },
       }),
+      prisma.earnPosition.findMany({
+        where: { status: "REDEEMED" },
+        select: {
+          principal: true,
+          rewardAmount: true,
+          lockedAt: true,
+          redeemedAt: true,
+        },
+        take: 500,
+      }),
     ]);
 
     const totalUserBalances = userBalances._sum.balanceUsdt ?? ZERO;
@@ -88,6 +105,25 @@ export async function GET(request: Request) {
     const gameBankroll = getInitialGameBankroll().plus(poolTotals.get("GAME_BANKROLL") ?? ZERO);
     const platformRevenue = poolTotals.get("PLATFORM_REVENUE") ?? ZERO;
     const earnBonusPool = poolTotals.get("EARN_BONUS_POOL") ?? ZERO;
+    const earnConfig = getEarnConfigFromEnv();
+    const healthyApyThresholdPercent = getHealthyApyThresholdPercent();
+    const availableLiquidity = totalUserBalances.minus(pendingWithdrawalTotal);
+    const health = calculateAdminHealth({
+      activeLockedPrincipal: decimalToString(earnActive._sum.principal),
+      earnBonusPool: earnBonusPool.toString(),
+      apyCapPercent: earnConfig.apyCapPercent,
+      lockDays: earnConfig.lockDays,
+      healthyApyThresholdPercent,
+      pendingWithdrawalTotal: pendingWithdrawalTotal.toString(),
+      availableLiquidity: availableLiquidity.toString(),
+      gameBankroll: gameBankroll.toString(),
+      redeemedPositions: redeemedEarnPositions.map((position) => ({
+        principal: position.principal.toString(),
+        rewardAmount: position.rewardAmount.toString(),
+        lockedAt: position.lockedAt,
+        redeemedAt: position.redeemedAt,
+      })),
+    });
 
     return NextResponse.json({
       stats: {
@@ -97,7 +133,7 @@ export async function GET(request: Request) {
         totalUserBalances: totalUserBalances.toString(),
         pendingWithdrawalTotal: pendingWithdrawalTotal.toString(),
         pendingWithdrawalCount: pendingWithdrawalTotals._count,
-        availableLiquidity: totalUserBalances.minus(pendingWithdrawalTotal).toString(),
+        availableLiquidity: availableLiquidity.toString(),
         gameBankroll: gameBankroll.toString(),
         platformRevenue: platformRevenue.toString(),
         earnBonusPool: earnBonusPool.toString(),
@@ -107,6 +143,7 @@ export async function GET(request: Request) {
         earnRedeemableCount: earnRedeemable._count,
         earnExternalYieldTotal: decimalToString(earnExternalYield._sum.amount),
       },
+      health,
       pendingWithdrawals: pendingWithdrawals.map((withdrawal) => ({
         id: withdrawal.id,
         amount: withdrawal.amount.toString(),

@@ -49,6 +49,10 @@ assertIncludes(adminOverviewRoute, "aggregate", "admin overview route");
 assertIncludes(adminOverviewRoute, "earnActive", "admin overview route");
 assertIncludes(adminOverviewRoute, "earnRedeemable", "admin overview route");
 assertIncludes(adminOverviewRoute, "EARN_EXTERNAL_YIELD", "admin overview route");
+assertIncludes(adminOverviewRoute, "calculateAdminHealth", "admin overview route");
+assertIncludes(adminOverviewRoute, "health", "admin overview route");
+assertIncludes(adminOverviewRoute, "healthyApyThresholdPercent", "admin overview route");
+assertIncludes(adminOverviewRoute, "redeemedEarnPositions", "admin overview route");
 
 const adminUserRoute = read("src/app/api/admin/users/[id]/route.ts");
 assertIncludes(adminUserRoute, "assertAdminSession", "admin user route");
