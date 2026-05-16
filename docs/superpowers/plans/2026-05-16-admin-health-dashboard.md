@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add a read-only Admin operational health panel that maps simulator health concepts onto real database state.
+**Goal:** Add a read-only Admin capital-pool health panel that maps simulator health concepts onto real database ledger state.
 
-**Architecture:** Keep health calculation in a pure `src/lib/admin-health.ts` module, then wire it into the existing `/api/admin/overview` response and `/admin` dashboard. The first version extends existing Admin overview instead of adding a new endpoint or writable settings.
+**Architecture:** Keep health calculation in a pure `src/lib/admin-health.ts` module, then wire it into the existing `/api/admin/overview` response and `/admin` dashboard. The first version extends existing Admin overview instead of adding a new endpoint or writable settings, and it labels the game bankroll as a DB book value rather than a live contract balance.
 
 **Tech Stack:** Next.js App Router, TypeScript, Prisma, PostgreSQL, Tailwind CSS, Node verification scripts.
 
@@ -31,13 +31,14 @@
 - Modify `src/app/admin/page.tsx`
   - Adds health DTO types.
   - Adds status/warning label helpers.
-  - Renders a new `營運健康` section.
+  - Renders a new `營運健康` section with `帳面遊戲金庫` naming.
 
 - Modify `scripts/verify-web-mvp-routes.mjs`
   - Asserts the Admin API and UI expose the new health concepts.
 
 - Modify `README.md` and `DEVELOPMENT_PLAN.md`
   - Marks the Admin health monitor MVP as implemented after the code lands.
+  - Documents that chain balance reconciliation is a later phase.
 
 ---
 
@@ -540,6 +541,7 @@ assertIncludes(adminPage, "營運健康", "admin dashboard");
 assertIncludes(adminPage, "即時 APY", "admin dashboard");
 assertIncludes(adminPage, "實現 APY", "admin dashboard");
 assertIncludes(adminPage, "提款缺口", "admin dashboard");
+assertIncludes(adminPage, "帳面遊戲金庫", "admin dashboard");
 assertIncludes(adminPage, "healthStatusLabel", "admin dashboard");
 assertIncludes(adminPage, "healthWarningLabel", "admin dashboard");
 ```
@@ -601,7 +603,7 @@ function healthWarningLabel(value: string) {
   const labels: Record<string, string> = {
     APY_BELOW_THRESHOLD: "即時 APY 低於健康門檻",
     WITHDRAWAL_SHORTFALL: "待審提款超過可用流動性",
-    GAME_BANKROLL_NEGATIVE: "遊戲金庫低於 0",
+    GAME_BANKROLL_NEGATIVE: "帳面遊戲金庫低於 0",
     NO_ACTIVE_EARN_PRINCIPAL: "目前沒有 active 收益寶本金",
   };
   return labels[value] || value;
@@ -672,7 +674,7 @@ Add:
             <Metric label="即時 APY" value={`${formatPercent(overview?.health?.instantApyPercent)}%`} detail={`健康門檻 ${formatPercent(overview?.health?.healthyApyThresholdPercent)}%`} icon={<RefreshCw size={20} />} />
             <Metric label="實現 APY" value={`${formatPercent(overview?.health?.realizedApyPercent)}%`} detail="已領回收益寶歷史" icon={<CheckCircle size={20} />} />
             <Metric label="提款缺口" value={`$${formatUsdt(overview?.health?.withdrawalShortfall)}`} detail="待審提款與可用流動性比較" icon={<ShieldAlert size={20} />} />
-            <Metric label="遊戲金庫健康" value={`$${formatUsdt(stats?.gameBankroll)}`} detail={overview?.health?.isGameBankrollHealthy ? "金庫非負" : "金庫低於 0"} icon={<ShieldAlert size={20} />} />
+            <Metric label="帳面遊戲金庫" value={`$${formatUsdt(stats?.gameBankroll)}`} detail={overview?.health?.isGameBankrollHealthy ? "DB 帳面金庫非負" : "DB 帳面金庫低於 0"} icon={<ShieldAlert size={20} />} />
             <Metric label="收益寶獎金池" value={`$${formatUsdt(stats?.earnBonusPool)}`} detail="可支撐鎖倉分紅" icon={<RefreshCw size={20} />} />
             <Metric label="鎖倉本金" value={`$${formatUsdt(stats?.earnActivePrincipal)}`} detail={`${stats?.earnActiveCount ?? 0} 筆 active`} icon={<Wallet size={20} />} />
           </div>
@@ -722,8 +724,8 @@ In `README.md`, replace:
 With:
 
 ```md
-- [x] Admin 營運健康面板 MVP：即時 APY、實現 APY、提款缺口、遊戲金庫與收益寶獎金池健康監控
-- [ ] 收益寶完整健康監控：抽成建議、完整提款延遲模型與告警流程
+- [x] Admin 資金池健康面板 MVP：即時 APY、實現 APY、提款缺口、帳面遊戲金庫與收益寶獎金池健康監控
+- [ ] 收益寶完整健康監控：抽成建議、完整提款延遲模型、鏈上資金對帳與告警流程
 ```
 
 - [ ] **Step 2: Update development plan Phase 3**
@@ -737,11 +739,13 @@ In `DEVELOPMENT_PLAN.md`, replace:
 With:
 
 ```md
-- [x] 開發 Admin 營運健康面板 MVP：即時 APY、實現 APY、遊戲金庫、收益寶獎金池、鎖倉本金與提款缺口接上真實 DB 狀態。
-- [ ] 補齊完整動態 APY 與健康監控：抽成建議、完整提款延遲模型、逾期提款佇列與 `/simulator` 指標完全一致。
+- [x] 開發 Admin 資金池健康面板 MVP：即時 APY、實現 APY、帳面遊戲金庫、收益寶獎金池、鎖倉本金與提款缺口接上真實 DB 狀態。
+- [ ] 補齊完整動態 APY 與健康監控：抽成建議、完整提款延遲模型、逾期提款佇列、鏈上資金對帳與 `/simulator` 指標完全一致。
 ```
 
 - [ ] **Step 3: Run documentation-related verification**
+
+Confirm the documentation describes chain balance reconciliation as a later phase, not as part of this implementation. Do not add contract reads to this task.
 
 Run:
 
@@ -816,6 +820,6 @@ If no fixes were needed, skip this commit.
 ## Self-Review Notes
 
 - Spec coverage: Tasks cover pure formulas, Admin overview API, Admin UI, route verification, documentation, and final verification.
-- Scope: The plan does not add fee recommendations, writable settings, a new route, user-facing health display, or simulator backend writes.
+- Scope: The plan does not add fee recommendations, writable settings, a new route, user-facing health display, simulator backend writes, or contract balance reconciliation.
 - Type consistency: `health`, `overallStatus`, `instantApyPercent`, `realizedApyPercent`, `healthyApyThresholdPercent`, `withdrawalShortfall`, and warning codes match the approved spec.
 - Testing: The first implementation task starts with a failing test and each behavior change has verification before commit.
