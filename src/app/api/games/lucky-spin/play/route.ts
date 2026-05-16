@@ -1,13 +1,13 @@
-import crypto from "crypto";
 import { Prisma } from "@prisma/client";
 import { getBearerSession } from "@/lib/auth";
+import { prepareRoundFairness, type RoundFairness } from "@/lib/game-fairness";
 import {
   calculateLuckySpinSettlement,
   getDefaultGameLedgerConfig,
   getLuckySpinMaxPlayerProfit,
-  type LuckySpinSegment,
 } from "@/lib/game-ledger";
 import { getPrisma } from "@/lib/prisma";
+import { pickLuckySpinSegmentFromDigest } from "@/lib/provably-fair";
 import { NextResponse } from "next/server";
 
 const ZERO = new Prisma.Decimal(0);
@@ -42,14 +42,6 @@ function getInitialGameBankroll() {
   return new Prisma.Decimal(process.env.INITIAL_GAME_BANKROLL_USDT || "95000");
 }
 
-function randomLuckySpinSegment(): LuckySpinSegment {
-  const roll = crypto.randomInt(100);
-  if (roll < 2) return "JACKPOT";
-  if (roll < 10) return "BIG_WIN";
-  if (roll < 35) return "SMALL_WIN";
-  return "MISS";
-}
-
 function balanceUpdate(delta: Prisma.Decimal) {
   if (delta.gte(0)) {
     return { balanceUsdt: { increment: delta } };
@@ -72,22 +64,28 @@ export async function POST(request: Request) {
     }
 
     const maxPlayerProfit = decimalFromNumber(getLuckySpinMaxPlayerProfit(Number(betAmount.toString()), config));
-    const settlement = calculateLuckySpinSettlement({
-      betAmount: Number(betAmount.toString()),
-      segment: randomLuckySpinSegment(),
-      config,
-    });
-    const userBalanceDelta = decimalFromNumber(settlement.userBalanceDelta);
-    const playerProfit = decimalFromNumber(settlement.playerProfit);
-    const payoutAmount = decimalFromNumber(settlement.payoutAmount);
-    const houseProfit = decimalFromNumber(settlement.houseProfit);
-    const platformCut = decimalFromNumber(settlement.platformCut);
-    const gameBankrollDelta = decimalFromNumber(settlement.gameBankrollDelta);
-    const bonusPoolCut = decimalFromNumber(settlement.bonusPoolCut);
 
     const result = await prisma.$transaction(async (tx) => {
       const user = await tx.user.findUnique({ where: { walletAddress: session.walletAddress } });
       if (!user) throw new Error("User not found");
+      const fairness = await prepareRoundFairness({
+        tx,
+        userId: user.id,
+        game: "LUCKY_SPIN",
+        clientSeed: body.clientSeed,
+      });
+      const settlement = calculateLuckySpinSettlement({
+        betAmount: Number(betAmount.toString()),
+        segment: pickLuckySpinSegmentFromDigest(fairness.randomDigest),
+        config,
+      });
+      const userBalanceDelta = decimalFromNumber(settlement.userBalanceDelta);
+      const playerProfit = decimalFromNumber(settlement.playerProfit);
+      const payoutAmount = decimalFromNumber(settlement.payoutAmount);
+      const houseProfit = decimalFromNumber(settlement.houseProfit);
+      const platformCut = decimalFromNumber(settlement.platformCut);
+      const gameBankrollDelta = decimalFromNumber(settlement.gameBankrollDelta);
+      const bonusPoolCut = decimalFromNumber(settlement.bonusPoolCut);
 
       const pendingWithdrawals = await tx.withdrawalRequest.aggregate({
         where: { userId: user.id, status: "PENDING" },
@@ -126,6 +124,11 @@ export async function POST(request: Request) {
           platformCut,
           gameBankrollDelta,
           bonusPoolCut,
+          serverSeedHash: fairness.serverSeedHash,
+          serverSeed: fairness.serverSeed,
+          clientSeed: fairness.clientSeed,
+          nonce: fairness.nonce,
+          randomDigest: fairness.randomDigest,
         },
       });
 
@@ -157,7 +160,7 @@ export async function POST(request: Request) {
         },
       });
 
-      return { round, updatedUser, pendingWithdrawalTotal };
+      return { round, updatedUser, pendingWithdrawalTotal, fairness };
     }, {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
@@ -176,8 +179,14 @@ export async function POST(request: Request) {
         platformCut: result.round.platformCut.toString(),
         gameBankrollDelta: result.round.gameBankrollDelta.toString(),
         bonusPoolCut: result.round.bonusPoolCut.toString(),
+        serverSeedHash: result.round.serverSeedHash,
+        serverSeed: result.round.serverSeed,
+        clientSeed: result.round.clientSeed,
+        nonce: result.round.nonce,
+        randomDigest: result.round.randomDigest,
         createdAt: result.round.createdAt,
       },
+      fairness: serializeFairness(result.fairness),
       user: {
         balanceUsdt: result.updatedUser.balanceUsdt.toString(),
         availableBalanceUsdt: result.updatedUser.balanceUsdt.minus(result.pendingWithdrawalTotal).toString(),
@@ -186,4 +195,15 @@ export async function POST(request: Request) {
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Bad request" }, { status: 400 });
   }
+}
+
+function serializeFairness(fairness: RoundFairness) {
+  return {
+    serverSeedHash: fairness.serverSeedHash,
+    serverSeed: fairness.serverSeed,
+    clientSeed: fairness.clientSeed,
+    nonce: fairness.nonce,
+    randomDigest: fairness.randomDigest,
+    nextServerSeedHash: fairness.nextServerSeedHash,
+  };
 }

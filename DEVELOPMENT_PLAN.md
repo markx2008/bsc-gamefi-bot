@@ -43,7 +43,7 @@
     - [x] **猜硬幣 (Coin Flip):** 低波動，使用內部餘額立即結算，正利潤進三池 ledger。
     - [x] **骰子比大小 (Dice):** 中波動，使用同一套內部餘額與金庫結算。
     - [x] **幸運轉盤 (Lucky Spin):** 高波動，下注前以最大頭獎派彩檢查遊戲金庫承受能力。
-- [ ] 實作公平性驗證：Server Seed + Client Seed + Nonce，並保留每局可驗證紀錄；大額或合約化階段再評估 Chainlink VRF。
+- [x] 實作公平性驗證 MVP：Server Seed + Client Seed + Nonce，下注前顯示下一局 server seed hash，結算後保留每局可驗證紀錄；大額或合約化階段再評估 Chainlink VRF。
 - [ ] 實作遊戲風控：下注上下限、連點防護、金庫透支防護、異步結算重試與重複請求冪等。
 
 ### 第三階段：收益寶與健康監控 (Phase 3: Earn Vault & Health Controls)

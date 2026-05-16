@@ -37,6 +37,8 @@ assertIncludes(meRoute, "getBearerSession", "me route");
 assertIncludes(meRoute, "transactions", "me route");
 assertIncludes(meRoute, "withdrawals", "me route");
 assertIncludes(meRoute, "pendingWithdrawalTotal", "me route");
+assertIncludes(meRoute, "fairness", "me route");
+assertIncludes(meRoute, "nextServerSeedHash", "me route");
 
 const adminOverviewRoute = read("src/app/api/admin/overview/route.ts");
 assertIncludes(adminOverviewRoute, "assertAdminSession", "admin overview route");
@@ -71,6 +73,8 @@ assertIncludes(homePage, "/api/games/dice/play", "games panel");
 assertIncludes(homePage, "/api/games/lucky-spin/play", "games panel");
 assertIncludes(homePage, "下注", "games panel");
 assertIncludes(homePage, "轉動", "games panel");
+assertIncludes(homePage, "Client Seed", "fairness panel");
+assertIncludes(homePage, "Server Seed Hash", "fairness panel");
 assertIncludes(homePage, "收益寶", "earn panel");
 assertIncludes(homePage, "7 天鎖倉", "earn panel");
 assertIncludes(homePage, "encodeFunctionData", "deposit panel");

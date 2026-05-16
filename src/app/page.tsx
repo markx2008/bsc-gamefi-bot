@@ -55,6 +55,11 @@ type GameRound = {
   payoutAmount: string;
   userBalanceDelta: string;
   houseProfit: string;
+  serverSeedHash: string | null;
+  serverSeed: string | null;
+  clientSeed: string | null;
+  nonce: number | null;
+  randomDigest: string | null;
   createdAt: string;
 };
 
@@ -63,6 +68,10 @@ type MeResponse = {
   transactions: Transaction[];
   withdrawals: Withdrawal[];
   gameRounds: GameRound[];
+  fairness: {
+    nextServerSeedHash: string;
+    nextNonce: number;
+  };
   config: {
     vaultAddress: string | null;
     usdtAddress: string | null;
@@ -99,6 +108,11 @@ function formatUsdt(value: string | number | null | undefined) {
 function shortAddress(value: string | null | undefined) {
   if (!value) return "未連線";
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function shortHash(value: string | null | undefined) {
+  if (!value) return "-";
+  return `${value.slice(0, 10)}...${value.slice(-8)}`;
 }
 
 function formatSignedUsdt(value: string | number | null | undefined) {
@@ -160,6 +174,7 @@ export default function UserDashboard() {
   const [lastDiceRound, setLastDiceRound] = useState<GameRound | null>(null);
   const [luckySpinAmount, setLuckySpinAmount] = useState("10");
   const [lastLuckySpinRound, setLastLuckySpinRound] = useState<GameRound | null>(null);
+  const [clientSeed, setClientSeed] = useState("default");
   const [chainBalance, setChainBalance] = useState("0");
   const [depositAllowance, setDepositAllowance] = useState("0");
   const [lastTxHash, setLastTxHash] = useState("");
@@ -365,7 +380,7 @@ export default function UserDashboard() {
           "Content-Type": "application/json",
           ...authHeaders,
         },
-        body: JSON.stringify({ amount: coinFlipAmount, choice: coinFlipChoice }),
+        body: JSON.stringify({ amount: coinFlipAmount, choice: coinFlipChoice, clientSeed }),
       });
       setLastGameRound(payload.round);
       setStatus(payload.round.result === "PLAYER_WIN" ? "猜硬幣結算：玩家獲勝。" : "猜硬幣結算：莊家獲勝。");
@@ -387,7 +402,7 @@ export default function UserDashboard() {
           "Content-Type": "application/json",
           ...authHeaders,
         },
-        body: JSON.stringify({ amount: diceAmount, choice: diceChoice }),
+        body: JSON.stringify({ amount: diceAmount, choice: diceChoice, clientSeed }),
       });
       setLastDiceRound(payload.round);
       setStatus(payload.round.result === "PLAYER_WIN" ? "骰子結算：玩家獲勝。" : "骰子結算：莊家獲勝。");
@@ -409,7 +424,7 @@ export default function UserDashboard() {
           "Content-Type": "application/json",
           ...authHeaders,
         },
-        body: JSON.stringify({ amount: luckySpinAmount }),
+        body: JSON.stringify({ amount: luckySpinAmount, clientSeed }),
       });
       setLastLuckySpinRound(payload.round);
       setStatus(payload.round.result === "PLAYER_WIN" ? "幸運轉盤結算：玩家獲勝。" : "幸運轉盤結算：莊家獲勝。");
@@ -538,6 +553,25 @@ export default function UserDashboard() {
               </div>
               <span className="rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-400">MVP</span>
             </div>
+            <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
+              <div className="grid gap-3 lg:grid-cols-[1fr_1.2fr] lg:items-end">
+                <label className="block text-sm text-zinc-300" htmlFor="clientSeed">
+                  Client Seed
+                  <input
+                    id="clientSeed"
+                    className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                    value={clientSeed}
+                    onChange={(event) => setClientSeed(event.target.value)}
+                    maxLength={128}
+                  />
+                </label>
+                <div className="text-xs text-zinc-500">
+                  <p>下一局 Server Seed Hash</p>
+                  <p className="mt-1 break-all font-mono text-zinc-300">{data?.fairness?.nextServerSeedHash || "-"}</p>
+                  <p className="mt-1">Nonce：{data?.fairness?.nextNonce ?? "-"}</p>
+                </div>
+              </div>
+            </div>
             <div className="mt-5 divide-y divide-zinc-800 rounded-lg border border-zinc-800 bg-zinc-950">
               <div className="px-4 py-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -584,6 +618,7 @@ export default function UserDashboard() {
                     <span>結果：{formatCoinSide(lastGameRound.outcome)}</span>
                     <span>輸贏：{formatGameResult(lastGameRound.result)}</span>
                     <span>餘額變化：{formatSignedUsdt(lastGameRound.userBalanceDelta)}</span>
+                    <FairnessProof round={lastGameRound} />
                   </div>
                 ) : null}
               </div>
@@ -632,6 +667,7 @@ export default function UserDashboard() {
                     <span>點數：{lastDiceRound.outcome}</span>
                     <span>輸贏：{formatGameResult(lastDiceRound.result)}</span>
                     <span>餘額變化：{formatSignedUsdt(lastDiceRound.userBalanceDelta)}</span>
+                    <FairnessProof round={lastDiceRound} />
                   </div>
                 ) : null}
               </div>
@@ -664,6 +700,7 @@ export default function UserDashboard() {
                     <span>結果：{formatLuckySpinSegment(lastLuckySpinRound.outcome)}</span>
                     <span>輸贏：{formatGameResult(lastLuckySpinRound.result)}</span>
                     <span>餘額變化：{formatSignedUsdt(lastLuckySpinRound.userBalanceDelta)}</span>
+                    <FairnessProof round={lastLuckySpinRound} />
                   </div>
                 ) : null}
               </div>
@@ -760,6 +797,21 @@ function MiniMetric({ label, value, icon }: { label: string; value: string; icon
         {icon}
       </div>
       <p className="mt-2 text-sm font-semibold text-zinc-100">{value}</p>
+    </div>
+  );
+}
+
+function FairnessProof({ round }: { round: GameRound }) {
+  if (!round.serverSeedHash || !round.serverSeed || !round.clientSeed || !round.nonce || !round.randomDigest) return null;
+  return (
+    <div className="rounded-md border border-zinc-800 bg-zinc-950 p-3 sm:col-span-3">
+      <div className="grid gap-2 sm:grid-cols-2">
+        <span>Server Seed：<span className="font-mono text-zinc-300">{shortHash(round.serverSeed)}</span></span>
+        <span>Hash：<span className="font-mono text-zinc-300">{shortHash(round.serverSeedHash)}</span></span>
+        <span>Client Seed：<span className="font-mono text-zinc-300">{round.clientSeed}</span></span>
+        <span>Nonce：<span className="font-mono text-zinc-300">{round.nonce}</span></span>
+        <span className="sm:col-span-2">Digest：<span className="font-mono text-zinc-300">{shortHash(round.randomDigest)}</span></span>
+      </div>
     </div>
   );
 }

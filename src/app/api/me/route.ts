@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { getBearerSession, isAdminWalletAddress } from "@/lib/auth";
 import { getPrisma } from "@/lib/prisma";
+import { createServerSeed, hashServerSeed } from "@/lib/provably-fair";
 import { NextResponse } from "next/server";
 
 export async function GET(request: Request) {
@@ -27,6 +28,18 @@ export async function GET(request: Request) {
     });
 
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    const fairnessCommitment = await prisma.gameFairnessCommitment.findUnique({ where: { userId: user.id } })
+      ?? await prisma.gameFairnessCommitment.create({
+        data: (() => {
+          const serverSeed = createServerSeed();
+          return {
+            userId: user.id,
+            serverSeed,
+            serverSeedHash: hashServerSeed(serverSeed),
+            nonce: 0,
+          };
+        })(),
+      });
 
     const pendingWithdrawals = await prisma.withdrawalRequest.aggregate({
       where: { userId: user.id, status: "PENDING" },
@@ -72,8 +85,17 @@ export async function GET(request: Request) {
         payoutAmount: round.payoutAmount.toString(),
         userBalanceDelta: round.userBalanceDelta.toString(),
         houseProfit: round.houseProfit.toString(),
+        serverSeedHash: round.serverSeedHash,
+        serverSeed: round.serverSeed,
+        clientSeed: round.clientSeed,
+        nonce: round.nonce,
+        randomDigest: round.randomDigest,
         createdAt: round.createdAt,
       })),
+      fairness: {
+        nextServerSeedHash: fairnessCommitment.serverSeedHash,
+        nextNonce: fairnessCommitment.nonce + 1,
+      },
       config: {
         vaultAddress: process.env.VAULT_ADDRESS || null,
         usdtAddress: process.env.USDT_ADDRESS || null,

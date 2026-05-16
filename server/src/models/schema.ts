@@ -55,7 +55,22 @@ export interface GameRound {
   platformCut: string;
   gameBankrollDelta: string;
   bonusPoolCut: string;
+  serverSeedHash?: string | null;
+  serverSeed?: string | null;
+  clientSeed?: string | null;
+  nonce?: number | null;
+  randomDigest?: string | null;
   createdAt: Date;
+}
+
+export interface GameFairnessCommitment {
+  id: number;
+  userId: number;
+  serverSeed: string;
+  serverSeedHash: string;
+  nonce: number;
+  createdAt: Date;
+  updatedAt: Date;
 }
 
 export interface PlatformLedgerEntry {
