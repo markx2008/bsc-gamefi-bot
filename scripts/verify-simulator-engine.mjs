@@ -42,12 +42,38 @@ function findEffect(event, label) {
 {
   const config = getDefaultSimulatorConfig();
   assert.equal(config.gameBankrollReservePercent, 90);
-  assert.equal(config.stakingPeriodRewardCapPercent, 10);
+  almostEqual(config.stakingPeriodRewardCapPercent, 15 * (7 / 365));
+  almostEqual(config.coinFlipPercent + config.dicePercent + config.luckySpinPercent, 100);
   const distribution = calculateGameProfitDistribution(100, config);
 
   almostEqual(distribution.platformCut, 5);
   almostEqual(distribution.gameBankrollReserve, 90);
   almostEqual(distribution.bonusPoolCut, 5);
+}
+
+{
+  const config = normalizeSimulatorConfig({
+    coinFlipPercent: 50,
+    dicePercent: 50,
+    luckySpinPercent: 50,
+  });
+
+  almostEqual(config.coinFlipPercent + config.dicePercent + config.luckySpinPercent, 100);
+  almostEqual(config.coinFlipPercent, 100 / 3);
+  almostEqual(config.dicePercent, 100 / 3);
+  almostEqual(config.luckySpinPercent, 100 / 3);
+}
+
+{
+  const config = normalizeSimulatorConfig({
+    coinFlipPercent: 0,
+    dicePercent: 0,
+    luckySpinPercent: 0,
+  });
+
+  almostEqual(config.coinFlipPercent, 40);
+  almostEqual(config.dicePercent, 35);
+  almostEqual(config.luckySpinPercent, 25);
 }
 
 {
@@ -144,6 +170,7 @@ function findEffect(event, label) {
     stakingTrafficPercent: 100,
     tickHours: 24,
     externalEarnApyPercent: 0,
+    stakingPeriodRewardCapPercent: 10,
   };
   const result = runSimulation(config, 10);
 
@@ -300,7 +327,7 @@ function findEffect(event, label) {
   };
   state = stepSimulator(config, state);
 
-  almostEqual(state.summary.instantApyPercent, 3650);
+  almostEqual(state.summary.instantApyPercent, 15);
 }
 
 {
@@ -327,6 +354,7 @@ function findEffect(event, label) {
     playerArrivalMax: 0,
     tickHours: 24,
     externalEarnApyPercent: 0,
+    stakingPeriodRewardCapPercent: 10,
   };
   let state = createInitialSimulatorState(config);
   state = {
@@ -459,6 +487,64 @@ function findEffect(event, label) {
   assert.ok(findEffect(stakeEvent, "平台流動性").amount > 0);
   almostEqual(state.summary.earnStats.totalPrincipalLocked, findEffect(stakeEvent, "鎖倉本金").amount);
   almostEqual(state.summary.earnStats.activeRewardAccrued, 0);
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
+    seed: 42,
+    gameTrafficPercent: 45,
+    stakingTrafficPercent: 55,
+    platformFeePercent: 5,
+    gameBankrollReservePercent: 90,
+    stakingPeriodRewardCapPercent: 0.5,
+    externalEarnApyPercent: 8,
+    withdrawalRequestPercent: 2,
+    withdrawalApprovalDelayHours: 0.5,
+  };
+  const state = runSimulation(config, 10600);
+
+  assert.ok(
+    state.summary.withdrawalShortfall >= 0,
+    `withdrawal shortfall must not be negative, got ${state.summary.withdrawalShortfall}`,
+  );
+  assert.ok(
+    state.summary.withdrawalShortfall <= state.summary.pendingWithdrawals + 0.000001,
+    `withdrawal shortfall ${state.summary.withdrawalShortfall} cannot exceed pending withdrawals ${state.summary.pendingWithdrawals}`,
+  );
+}
+
+{
+  const config = {
+    ...getDefaultSimulatorConfig(),
+    playerArrivalMin: 0,
+    playerArrivalMax: 0,
+    withdrawalRequestPercent: 100,
+    withdrawalApprovalDelayHours: 0.5,
+    tickHours: 1,
+  };
+  let state = createInitialSimulatorState(config);
+  state = {
+    ...state,
+    summary: {
+      ...state.summary,
+      userWithdrawableBalance: 100,
+      platformLiquidity: 100,
+    },
+  };
+  state = stepSimulator(config, state);
+
+  almostEqual(state.summary.withdrawalShortfall, 0);
+  almostEqual(state.summary.pendingWithdrawals, 100);
+
+  state = stepSimulator({ ...config, withdrawalRequestPercent: 0 }, state);
+
+  almostEqual(state.summary.withdrawalShortfall, 0);
+  almostEqual(state.summary.pendingWithdrawals, 0);
+  almostEqual(state.summary.withdrawalsPaid, 100);
+  const paidEvent = state.events.find((event) => event.title === "提款支付");
+  assert.ok(paidEvent, "sub-hour delayed withdrawal should be a normal payment");
+  assert.equal(state.events.some((event) => event.title === "缺口補付"), false);
 }
 
 console.log("Simulator engine verification passed");

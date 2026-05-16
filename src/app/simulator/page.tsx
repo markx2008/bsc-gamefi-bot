@@ -49,15 +49,23 @@ function formatPercent(value: number) {
   });
 }
 
+function periodCapToApy(periodCapPercent: number, lockDays: number) {
+  return periodCapPercent * (365 / Math.max(lockDays, 1 / 24));
+}
+
+function apyToPeriodCap(apyPercent: number, lockDays: number) {
+  return apyPercent * (Math.max(lockDays, 1 / 24) / 365);
+}
+
+function roundPercent(value: number) {
+  return Math.round(value * 100) / 100;
+}
+
 export default function SimulatorPage() {
   const [config, setConfig] = useState<SimulatorConfig>(DEFAULT_CONFIG);
   const [state, setState] = useState<SimulatorState>(() => createInitialSimulatorState(DEFAULT_CONFIG));
   const [running, setRunning] = useState(false);
   const [ticksPerFrame, setTicksPerFrame] = useState(3);
-
-  const feeSweep = useMemo(() => sweepPlatformFees(config, FEE_SWEEP_VALUES, 240), [config]);
-  const tenPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 10 }, 240).summary, [config]);
-  const twentyPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 20 }, 240).summary, [config]);
 
   useEffect(() => {
     if (!running) return undefined;
@@ -108,6 +116,36 @@ export default function SimulatorPage() {
     });
   }
 
+  function setGamePercent(game: GameKey, value: number) {
+    const nextValue = Math.max(0, Math.min(100, value));
+    const current = {
+      coinFlip: safeConfig.coinFlipPercent,
+      dice: safeConfig.dicePercent,
+      luckySpin: safeConfig.luckySpinPercent,
+    };
+    const otherGames = GAME_STAT_ITEMS.map((item) => item.key).filter((key) => key !== game);
+    const remaining = 100 - nextValue;
+    const otherTotal = otherGames.reduce((total, key) => total + current[key], 0);
+    const firstOther = otherGames[0];
+    const secondOther = otherGames[1];
+    const firstValue = otherTotal > 0
+      ? roundPercent(remaining * (current[firstOther] / otherTotal))
+      : roundPercent(remaining / 2);
+    const secondValue = roundPercent(remaining - firstValue);
+    const next = {
+      ...current,
+      [game]: nextValue,
+      [firstOther]: firstValue,
+      [secondOther]: secondValue,
+    };
+
+    updateConfig({
+      coinFlipPercent: next.coinFlip,
+      dicePercent: next.dice,
+      luckySpinPercent: next.luckySpin,
+    });
+  }
+
   function stepOnce() {
     setRunning(false);
     setState((current) => stepSimulator(config, current));
@@ -115,8 +153,13 @@ export default function SimulatorPage() {
 
   const safeConfig = normalizeSimulatorConfig(config);
   const summary = state.summary;
+  const feeSweepTicks = Math.max(240, summary.tick);
+  const feeSweep = useMemo(() => sweepPlatformFees(config, FEE_SWEEP_VALUES, feeSweepTicks), [config, feeSweepTicks]);
+  const tenPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 10 }, feeSweepTicks).summary, [config, feeSweepTicks]);
+  const twentyPercent = useMemo(() => runSimulation({ ...config, platformFeePercent: 20 }, feeSweepTicks).summary, [config, feeSweepTicks]);
   const recommendedScenario = feeSweep.scenarios.find((scenario) => scenario.feePercent === feeSweep.recommendedFeePercent);
   const apyHealthy = summary.instantApyPercent >= safeConfig.healthyApyPercent;
+  const hasWithdrawalAccountingError = summary.withdrawalShortfall < -0.000001;
   const earnPoolPercent = Math.max(0, 100 - safeConfig.platformFeePercent - safeConfig.gameBankrollReservePercent);
   const platformFundsTotal = summary.gameBankroll + summary.platformRevenue + summary.bonusPool;
   const userFundsTotal = summary.lockedPrincipal + summary.userWithdrawableBalance;
@@ -185,14 +228,14 @@ export default function SimulatorPage() {
           <MetricGroup title="運行狀態" total={`T+${summary.tick}`} detail={`${formatPercent(summary.simulatedDays)} 天 / ${summary.playersProcessed} players`}>
             <Metric label="可用現金" value={`$${formatMoney(summary.platformLiquidity)}`} detail="平台錢包現金餘額" tone={summary.platformLiquidity < summary.withdrawalShortfall ? "amber" : "green"} />
             <Metric label="待處理提款" value={`$${formatMoney(summary.pendingWithdrawals)}`} detail={`${safeConfig.withdrawalApprovalDelayHours} 小時審核延遲`} tone="amber" />
-            <Metric label="逾期未付提款" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail="尚未補付的提款負債" tone={summary.withdrawalShortfall > 0 ? "red" : "neutral"} />
-            <Metric label="即時 APY" value={`${formatPercent(summary.instantApyPercent)}%`} detail={apyHealthy ? "高於健康門檻" : `低於 ${safeConfig.healthyApyPercent}% 門檻`} tone={apyHealthy ? "green" : "amber"} />
+            <Metric label="逾期未付提款" value={`$${formatMoney(summary.withdrawalShortfall)}`} detail={hasWithdrawalAccountingError ? "提款缺口會計異常" : "尚未補付的提款負債"} tone={summary.withdrawalShortfall !== 0 ? "red" : "neutral"} />
+            <Metric label="即時 APY" value={`${formatPercent(summary.instantApyPercent)}%`} detail={apyHealthy ? "受單期上限限制，高於門檻" : `受單期上限限制，低於 ${safeConfig.healthyApyPercent}% 門檻`} tone={apyHealthy ? "green" : "amber"} />
           </MetricGroup>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[340px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)_420px]">
           <div className="grid content-start gap-4">
-            <Panel title="參數" icon={<Settings2 size={18} />}>
+            <Panel title="運行參數" icon={<Settings2 size={18} />}>
               <div className="grid gap-4">
                 <NumberField label="Seed" value={safeConfig.seed} min={1} max={99999} step={1} onChange={(value) => updateConfig({ seed: value })} />
                 <NumberField label="每輪最少新玩家" value={safeConfig.playerArrivalMin} min={0} max={50} step={1} onChange={(value) => updateConfig({ playerArrivalMin: value })} />
@@ -200,26 +243,37 @@ export default function SimulatorPage() {
                 <RangeField label="跑速" value={ticksPerFrame} min={1} max={200} step={1} suffix="輪/刷新" onChange={setTicksPerFrame} />
                 <RangeField label="進遊戲比例" value={safeConfig.gameTrafficPercent} min={0} max={100} step={5} suffix="%" onChange={setGameTraffic} />
                 <ReadOnlyRow label="進收益寶比例" value={`${safeConfig.stakingTrafficPercent}%`} />
+              </div>
+            </Panel>
+
+            <Panel title="平台與提款" icon={<Settings2 size={18} />}>
+              <div className="grid gap-4">
                 <RangeField label="平台收益比例" value={safeConfig.platformFeePercent} min={0} max={100} step={1} suffix="%" onChange={setPlatformFeePercent} />
                 <RangeField label="遊戲金庫保留比例" value={safeConfig.gameBankrollReservePercent} min={0} max={100 - safeConfig.platformFeePercent} step={1} suffix="%" onChange={setGameBankrollReservePercent} />
                 <ReadOnlyRow label="收益寶獎金池比例" value={`${earnPoolPercent}%`} />
                 <ReadOnlyRow label="正利潤分配合計" value={`${safeConfig.platformFeePercent + safeConfig.gameBankrollReservePercent + earnPoolPercent}%`} />
-                <RangeField label="單期收益上限" value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={10} step={0.01} suffix="%" onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
-                <NumberField label="單期收益上限輸入" value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={10} step={0.01} onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
-                <ReadOnlyRow label="單期上限年化" value={`APY：${formatPercent(safeConfig.stakingPeriodRewardCapPercent * (365 / Math.max(safeConfig.stakingLockDays, 1 / 24)))}%`} />
-                <RangeField label="外部鎖倉 APY" value={safeConfig.externalEarnApyPercent} min={0} max={80} step={0.5} suffix="%" onChange={(value) => updateConfig({ externalEarnApyPercent: value })} />
-                <RangeField label="莊家優勢" value={safeConfig.houseEdgePercent} min={0} max={8} step={0.5} suffix="%" onChange={(value) => updateConfig({ houseEdgePercent: value })} />
-                <RangeField label="健康 APY 門檻" value={safeConfig.healthyApyPercent} min={0} max={80} step={1} suffix="%" onChange={(value) => updateConfig({ healthyApyPercent: value })} />
                 <RangeField label="每輪提款申請比例" value={safeConfig.withdrawalRequestPercent} min={0} max={100} step={1} suffix="%" onChange={(value) => updateConfig({ withdrawalRequestPercent: value })} />
-                <NumberField label="提款審核延遲小時" value={safeConfig.withdrawalApprovalDelayHours} min={0} max={168} step={1} onChange={(value) => updateConfig({ withdrawalApprovalDelayHours: value })} />
+                <NumberField label="提款審核延遲小時" value={safeConfig.withdrawalApprovalDelayHours} min={0} max={168} step={0.5} onChange={(value) => updateConfig({ withdrawalApprovalDelayHours: value })} />
+              </div>
+            </Panel>
+
+            <Panel title="收益寶設定" icon={<Vault size={18} />}>
+              <div className="grid gap-4">
+                <RangeField label={`${safeConfig.stakingLockDays}天收益上限`} value={safeConfig.stakingPeriodRewardCapPercent} min={0} max={10} step={0.01} suffix="%" onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
+                <NumberField label={`${safeConfig.stakingLockDays}天收益上限輸入`} value={roundPercent(safeConfig.stakingPeriodRewardCapPercent)} min={0} max={10} step={0.01} onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: value })} />
+                <NumberField label="收益寶 APY 上限" value={roundPercent(periodCapToApy(safeConfig.stakingPeriodRewardCapPercent, safeConfig.stakingLockDays))} min={0} max={periodCapToApy(10, safeConfig.stakingLockDays)} step={0.01} onChange={(value) => updateConfig({ stakingPeriodRewardCapPercent: apyToPeriodCap(value, safeConfig.stakingLockDays) })} />
+                <RangeField label="外部鎖倉 APY" value={safeConfig.externalEarnApyPercent} min={0} max={80} step={0.5} suffix="%" onChange={(value) => updateConfig({ externalEarnApyPercent: value })} />
+                <RangeField label="健康 APY 門檻" value={safeConfig.healthyApyPercent} min={0} max={80} step={1} suffix="%" onChange={(value) => updateConfig({ healthyApyPercent: value })} />
               </div>
             </Panel>
 
             <Panel title="遊戲與本金設定" icon={<Vault size={18} />}>
               <div className="grid gap-4">
-                <RangeField label="猜硬幣比例" value={safeConfig.coinFlipPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ coinFlipPercent: value })} />
-                <RangeField label="骰子比例" value={safeConfig.dicePercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ dicePercent: value })} />
-                <RangeField label="幸運轉盤比例" value={safeConfig.luckySpinPercent} min={0} max={100} step={5} suffix="%" onChange={(value) => updateConfig({ luckySpinPercent: value })} />
+                <RangeField label="猜硬幣比例" value={safeConfig.coinFlipPercent} min={0} max={100} step={0.1} suffix="%" onChange={(value) => setGamePercent("coinFlip", value)} />
+                <RangeField label="骰子比例" value={safeConfig.dicePercent} min={0} max={100} step={0.1} suffix="%" onChange={(value) => setGamePercent("dice", value)} />
+                <RangeField label="幸運轉盤比例" value={safeConfig.luckySpinPercent} min={0} max={100} step={0.1} suffix="%" onChange={(value) => setGamePercent("luckySpin", value)} />
+                <ReadOnlyRow label="遊戲比例合計" value={`${formatPercent(safeConfig.coinFlipPercent + safeConfig.dicePercent + safeConfig.luckySpinPercent)}%`} />
+                <RangeField label="莊家優勢" value={safeConfig.houseEdgePercent} min={0} max={8} step={0.5} suffix="%" onChange={(value) => updateConfig({ houseEdgePercent: value })} />
                 <NumberField label="玩家本金下限" value={safeConfig.capitalMin} min={0} max={10000} step={10} onChange={(value) => updateConfig({ capitalMin: value })} />
                 <NumberField label="玩家本金上限" value={safeConfig.capitalMax} min={0} max={20000} step={10} onChange={(value) => updateConfig({ capitalMax: value })} />
                 <NumberField label="下注下限" value={safeConfig.betSizeMin} min={0} max={1000} step={1} onChange={(value) => updateConfig({ betSizeMin: value })} />
@@ -269,7 +323,7 @@ export default function SimulatorPage() {
                           <td className="px-3 py-2 font-mono text-zinc-200">${formatMoney(scenario.summary.rewardsPaid)}</td>
                           <td className="px-3 py-2 font-mono text-zinc-200">{formatPercent(scenario.summary.instantApyPercent)}%</td>
                           <td className="px-3 py-2 font-mono text-zinc-200">{formatPercent(scenario.summary.realizedApyPercent)}%</td>
-                          <td className={scenario.summary.withdrawalShortfall > 0 ? "px-3 py-2 font-mono text-red-300" : "px-3 py-2 font-mono text-zinc-200"}>${formatMoney(scenario.summary.withdrawalShortfall)}</td>
+                          <td className={scenario.summary.withdrawalShortfall !== 0 ? "px-3 py-2 font-mono text-red-300" : "px-3 py-2 font-mono text-zinc-200"}>${formatMoney(scenario.summary.withdrawalShortfall)}</td>
                           <td className={scenario.isHealthy ? "px-3 py-2 text-emerald-300" : "px-3 py-2 text-amber-300"}>{scenario.isHealthy ? "健康" : "未達門檻"}</td>
                         </tr>
                       ))}
@@ -282,7 +336,7 @@ export default function SimulatorPage() {
                     <Trophy size={16} />
                   </div>
                   <p className="mt-3 text-3xl font-semibold text-white">{feeSweep.recommendedFeePercent}%</p>
-                    <p className="mt-2 text-sm text-zinc-400">規則：即時 APY 高於門檻、逾期未付為 0、金庫無警告時，選平台收益最高的抽成。</p>
+                    <p className="mt-2 text-sm text-zinc-400">以目前 T+{feeSweepTicks} 重跑同一組 seed。規則：即時 APY 高於門檻、逾期未付為 0、金庫無警告時，選平台收益最高的抽成。</p>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                     <CompareTile label="10% 收益" value={`$${formatMoney(tenPercent.platformRevenue)}`} />
                     <CompareTile label="20% 收益" value={`$${formatMoney(twentyPercent.platformRevenue)}`} />
@@ -454,11 +508,13 @@ function Metric({ label, value, detail, tone = "neutral" }: { label: string; val
 }
 
 function RangeField({ label, value, min, max, step, suffix, onChange }: { label: string; value: number; min: number; max: number; step: number; suffix: string; onChange: (value: number) => void }) {
+  const displayValue = suffix === "%" ? formatPercent(value) : value;
+
   return (
     <label className="block">
       <div className="flex items-center justify-between gap-3">
         <span className="text-sm text-zinc-300">{label}</span>
-        <span className="font-mono text-sm text-zinc-100">{value}{suffix}</span>
+        <span className="font-mono text-sm text-zinc-100">{displayValue}{suffix}</span>
       </div>
       <input className="mt-2 w-full accent-emerald-500" type="range" value={value} min={min} max={max} step={step} onChange={(event) => onChange(Number(event.target.value))} />
     </label>

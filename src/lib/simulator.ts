@@ -37,6 +37,7 @@ export type LockedPosition = {
 export type PendingWithdrawal = {
   amount: number;
   dueHour: number;
+  isShortfall?: boolean;
 };
 
 export type SimulatorEventEffect = {
@@ -138,6 +139,9 @@ const GAME_VOLATILITY: Record<GameKey, number> = {
   luckySpin: 2.1,
 };
 
+const DEFAULT_STAKING_LOCK_DAYS = 7;
+const DEFAULT_STAKING_APY_CAP_PERCENT = 15;
+
 export function getDefaultSimulatorConfig(): SimulatorConfig {
   return {
     seed: 42,
@@ -158,8 +162,8 @@ export function getDefaultSimulatorConfig(): SimulatorConfig {
     houseEdgePercent: 3,
     platformFeePercent: 5,
     gameBankrollReservePercent: 90,
-    stakingLockDays: 7,
-    stakingPeriodRewardCapPercent: 10,
+    stakingLockDays: DEFAULT_STAKING_LOCK_DAYS,
+    stakingPeriodRewardCapPercent: DEFAULT_STAKING_APY_CAP_PERCENT * (DEFAULT_STAKING_LOCK_DAYS / 365),
     externalEarnApyPercent: 8,
     healthyApyPercent: 20,
     withdrawalRequestPercent: 2,
@@ -169,6 +173,12 @@ export function getDefaultSimulatorConfig(): SimulatorConfig {
 
 export function normalizeSimulatorConfig(config: Partial<SimulatorConfig>): SimulatorConfig {
   const defaults = getDefaultSimulatorConfig();
+  const gamePercents = normalizeGamePercents({
+    coinFlipPercent: safeNumber(config.coinFlipPercent, defaults.coinFlipPercent),
+    dicePercent: safeNumber(config.dicePercent, defaults.dicePercent),
+    luckySpinPercent: safeNumber(config.luckySpinPercent, defaults.luckySpinPercent),
+  });
+
   return {
     ...defaults,
     ...config,
@@ -183,9 +193,9 @@ export function normalizeSimulatorConfig(config: Partial<SimulatorConfig>): Simu
     betSizeMax: safeNumber(config.betSizeMax, defaults.betSizeMax),
     gameTrafficPercent: safeNumber(config.gameTrafficPercent, defaults.gameTrafficPercent),
     stakingTrafficPercent: safeNumber(config.stakingTrafficPercent, defaults.stakingTrafficPercent),
-    coinFlipPercent: safeNumber(config.coinFlipPercent, defaults.coinFlipPercent),
-    dicePercent: safeNumber(config.dicePercent, defaults.dicePercent),
-    luckySpinPercent: safeNumber(config.luckySpinPercent, defaults.luckySpinPercent),
+    coinFlipPercent: gamePercents.coinFlipPercent,
+    dicePercent: gamePercents.dicePercent,
+    luckySpinPercent: gamePercents.luckySpinPercent,
     houseEdgePercent: safeNumber(config.houseEdgePercent, defaults.houseEdgePercent),
     platformFeePercent: safeNumber(config.platformFeePercent, defaults.platformFeePercent),
     gameBankrollReservePercent: safeNumber(config.gameBankrollReservePercent, defaults.gameBankrollReservePercent),
@@ -253,7 +263,6 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   let bonusPool = state.summary.bonusPool;
   let userWithdrawableBalance = state.summary.userWithdrawableBalance;
   let withdrawalsPaid = state.summary.withdrawalsPaid;
-  let withdrawalShortfall = state.summary.withdrawalShortfall;
   let platformLiquidity = state.summary.platformLiquidity;
   let platformRevenue = state.summary.platformRevenue;
   let rewardsPaid = state.summary.rewardsPaid;
@@ -311,22 +320,19 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
 
     const paid = Math.min(withdrawal.amount, Math.max(0, platformLiquidity));
     const shortfall = withdrawal.amount - paid;
-    const isOverdue = withdrawal.dueHour < currentHours;
+    const isShortfallPayment = withdrawal.isShortfall === true;
     platformLiquidity -= paid;
     withdrawalsPaid += paid;
     if (paid > 0) {
-      if (isOverdue) {
-        withdrawalShortfall -= paid;
-      }
       events.push({
         id: nextEventId,
         tick: nextTick,
         type: "withdrawal",
-        title: isOverdue ? "缺口補付" : "提款支付",
+        title: isShortfallPayment ? "缺口補付" : "提款支付",
         amount: paid,
-        detail: isOverdue ? "平台流動性恢復後補付逾期提款" : "待處理提款通過延遲後由平台流動性支付",
+        detail: isShortfallPayment ? "平台流動性恢復後補付逾期提款" : "待處理提款通過延遲後由平台流動性支付",
         effects: [
-          { label: isOverdue ? "逾期未付提款" : "待處理提款", amount: -paid },
+          { label: isShortfallPayment ? "逾期未付提款" : "待處理提款", amount: -paid },
           { label: "平台流動性", amount: -paid },
         ],
       });
@@ -334,12 +340,10 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     }
     if (shortfall > 0) {
       warningCount += 1;
-      if (!isOverdue) {
-        withdrawalShortfall += shortfall;
-      }
       carriedWithdrawalQueue.push({
         amount: shortfall,
         dueHour: currentHours - normalizedConfig.tickHours,
+        isShortfall: true,
       });
       events.push({
         id: nextEventId,
@@ -534,6 +538,7 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
   for (const withdrawal of dueNow) {
     const paid = Math.min(withdrawal.amount, Math.max(0, platformLiquidity));
     const shortfall = withdrawal.amount - paid;
+    const isShortfallPayment = withdrawal.isShortfall === true;
     platformLiquidity -= paid;
     withdrawalsPaid += paid;
     if (paid > 0) {
@@ -541,11 +546,11 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         id: nextEventId,
         tick: nextTick,
         type: "withdrawal",
-        title: withdrawal.dueHour < currentHours ? "缺口補付" : "提款支付",
+        title: isShortfallPayment ? "缺口補付" : "提款支付",
         amount: paid,
-        detail: withdrawal.dueHour < currentHours ? "平台流動性恢復後補付逾期提款" : "提款申請已由平台流動性支付",
+        detail: isShortfallPayment ? "平台流動性恢復後補付逾期提款" : "提款申請已由平台流動性支付",
         effects: [
-          { label: withdrawal.dueHour < currentHours ? "逾期未付提款" : "待處理提款", amount: -paid },
+          { label: isShortfallPayment ? "逾期未付提款" : "待處理提款", amount: -paid },
           { label: "平台流動性", amount: -paid },
         ],
       });
@@ -553,14 +558,10 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
     }
     if (shortfall > 0) {
       warningCount += 1;
-      if (withdrawal.dueHour < currentHours && paid > 0) {
-        withdrawalShortfall -= paid;
-      } else if (withdrawal.dueHour >= currentHours) {
-        withdrawalShortfall += shortfall;
-      }
       stillPending.push({
         amount: shortfall,
         dueHour: currentHours,
+        isShortfall: true,
       });
       events.push({
         id: nextEventId,
@@ -574,17 +575,19 @@ export function stepSimulator(config: SimulatorConfig, state: SimulatorState): S
         ],
       });
       nextEventId += 1;
-    } else if (withdrawal.dueHour < currentHours) {
-      withdrawalShortfall -= paid;
     }
   }
 
   const lockedPrincipal = sumLockedPrincipal(activePositions);
   earnStats.activeRewardAccrued = activePositions.reduce((total, position) => total + (position.rewardAccrued ?? 0), 0);
   const pendingWithdrawals = sumPendingWithdrawals(stillPending);
+  const withdrawalShortfall = sumWithdrawalShortfall(stillPending);
   const simulatedDays = currentHours / 24;
+  const fundedPeriodYieldPercent = lockedPrincipal > 0
+    ? (bonusPool / lockedPrincipal) * 100
+    : 0;
   const instantApyPercent = lockedPrincipal > 0
-    ? (bonusPool / lockedPrincipal) * 365 * 100
+    ? Math.min(fundedPeriodYieldPercent, normalizedConfig.stakingPeriodRewardCapPercent) * (365 / Math.max(normalizedConfig.stakingLockDays, 1 / 24))
     : 0;
   const realizedApyPercent = lockedPrincipal > 0 && simulatedDays > 0
     ? (rewardsPaid / lockedPrincipal) * (365 / simulatedDays) * 100
@@ -669,6 +672,27 @@ function safeNumber(value: number | undefined, fallback: number) {
 
 function clampPercent(value: number) {
   return Math.max(0, Math.min(100, value));
+}
+
+function normalizeGamePercents(values: Pick<SimulatorConfig, "coinFlipPercent" | "dicePercent" | "luckySpinPercent">) {
+  const coinFlipPercent = clampPercent(values.coinFlipPercent);
+  const dicePercent = clampPercent(values.dicePercent);
+  const luckySpinPercent = clampPercent(values.luckySpinPercent);
+  const total = coinFlipPercent + dicePercent + luckySpinPercent;
+
+  if (total <= 0) {
+    return {
+      coinFlipPercent: 40,
+      dicePercent: 35,
+      luckySpinPercent: 25,
+    };
+  }
+
+  return {
+    coinFlipPercent: (coinFlipPercent / total) * 100,
+    dicePercent: (dicePercent / total) * 100,
+    luckySpinPercent: (luckySpinPercent / total) * 100,
+  };
 }
 
 function createEmptyGameStats(): Record<GameKey, GameStats> {
@@ -786,4 +810,10 @@ function sumLockedPrincipal(positions: LockedPosition[]) {
 
 function sumPendingWithdrawals(withdrawals: PendingWithdrawal[]) {
   return withdrawals.reduce((total, withdrawal) => total + withdrawal.amount, 0);
+}
+
+function sumWithdrawalShortfall(withdrawals: PendingWithdrawal[]) {
+  return withdrawals.reduce((total, withdrawal) => {
+    return withdrawal.isShortfall === true ? total + withdrawal.amount : total;
+  }, 0);
 }
