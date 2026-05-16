@@ -16,6 +16,7 @@ model User {
   transactions   Transaction[]
   withdrawals    WithdrawalRequest[]
   gameRounds     GameRound[]
+  earnPositions  EarnPosition[]
   fairnessCommitment GameFairnessCommitment?
 }
 
@@ -101,6 +102,25 @@ model GameFairnessCommitment {
   updatedAt      DateTime @updatedAt
 }
 
+model EarnPosition {
+  id                    Int                @id @default(autoincrement())
+  userId                Int
+  user                  User               @relation(fields: [userId], references: [id])
+  principal             Decimal            @db.Decimal(36, 18)
+  status                EarnPositionStatus @default(ACTIVE)
+  lockedAt              DateTime           @default(now())
+  unlockAt              DateTime
+  redeemedAt            DateTime?
+  externalYieldAmount   Decimal            @default(0) @db.Decimal(36, 18)
+  bonusPoolRewardAmount Decimal            @default(0) @db.Decimal(36, 18)
+  rewardAmount          Decimal            @default(0) @db.Decimal(36, 18)
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+
+  @@index([userId, status, unlockAt])
+  @@index([status, unlockAt])
+}
+
 model PlatformLedgerEntry {
   id        Int                      @id @default(autoincrement())
   pool      PlatformPool
@@ -123,6 +143,8 @@ enum TransactionType {
   REWARD
   GAME_LOSS
   GAME_WIN
+  EARN_LOCK
+  EARN_REDEEM
 }
 
 enum TransactionStatus {
@@ -165,5 +187,11 @@ enum PlatformPool {
 enum PlatformLedgerSourceType {
   GAME_ROUND
   EARN_EXTERNAL_YIELD
+  EARN_REWARD_RELEASE
   ADMIN_ADJUSTMENT
+}
+
+enum EarnPositionStatus {
+  ACTIVE
+  REDEEMED
 }

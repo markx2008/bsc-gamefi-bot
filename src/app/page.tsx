@@ -63,6 +63,35 @@ type GameRound = {
   createdAt: string;
 };
 
+type EarnPosition = {
+  id: number;
+  principal: string;
+  status: string;
+  lockedAt: string;
+  unlockAt: string;
+  redeemedAt: string | null;
+  externalYieldAmount: string;
+  bonusPoolRewardAmount: string;
+  rewardAmount: string;
+};
+
+type EarnResponse = {
+  positions: EarnPosition[];
+  summary: {
+    lockedPrincipal: string;
+    activeCount: number;
+    redeemablePrincipal: string;
+    redeemableCount: number;
+    earnBonusPool: string;
+  };
+  config: {
+    lockDays: number;
+    minLockAmount: number;
+    apyCapPercent: number;
+    externalApyPercent: number;
+  };
+};
+
 type MeResponse = {
   user: UserState;
   transactions: Transaction[];
@@ -122,6 +151,16 @@ function formatSignedUsdt(value: string | number | null | undefined) {
   return "$0";
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return "-";
+  return new Date(value).toLocaleString("zh-TW", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatCoinSide(value: string) {
   return value === "HEADS" ? "正面" : "反面";
 }
@@ -164,8 +203,10 @@ function configStatus(data: MeResponse | null) {
 export default function UserDashboard() {
   const [token, setToken] = useState("");
   const [data, setData] = useState<MeResponse | null>(null);
+  const [earnData, setEarnData] = useState<EarnResponse | null>(null);
   const [depositAmount, setDepositAmount] = useState("");
   const [withdrawAmount, setWithdrawAmount] = useState("");
+  const [earnAmount, setEarnAmount] = useState("10");
   const [coinFlipAmount, setCoinFlipAmount] = useState("10");
   const [coinFlipChoice, setCoinFlipChoice] = useState<"HEADS" | "TAILS">("HEADS");
   const [lastGameRound, setLastGameRound] = useState<GameRound | null>(null);
@@ -189,6 +230,7 @@ export default function UserDashboard() {
     window.localStorage.removeItem(TOKEN_KEY);
     setToken("");
     setData(null);
+    setEarnData(null);
   }
 
   function shouldClearSession(error: unknown) {
@@ -252,12 +294,21 @@ export default function UserDashboard() {
       });
       setData(payload);
       await loadTokenState(payload);
+      await loadEarn(activeToken);
     } catch (error) {
       if (shouldClearSession(error)) clearStoredSession();
       setStatus(error instanceof Error ? error.message : "載入帳戶失敗");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadEarn(activeToken = token) {
+    if (!activeToken) return;
+    const payload = await requestJson<EarnResponse>("/api/earn/positions", {
+      headers: { Authorization: `Bearer ${activeToken}` },
+    });
+    setEarnData(payload);
   }
 
   async function readContractString(to: string, data: `0x${string}`) {
@@ -370,6 +421,50 @@ export default function UserDashboard() {
     }
   }
 
+  async function lockEarn(event: React.FormEvent) {
+    event.preventDefault();
+    setLoading(true);
+    setStatus("");
+    try {
+      await requestJson("/api/earn/lock", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ amount: earnAmount }),
+      });
+      setEarnAmount("10");
+      setStatus("收益寶鎖倉已建立。");
+      await loadMe();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "收益寶鎖倉失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function redeemEarn(positionId: number) {
+    setLoading(true);
+    setStatus("");
+    try {
+      await requestJson("/api/earn/redeem", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...authHeaders,
+        },
+        body: JSON.stringify({ positionId }),
+      });
+      setStatus("收益寶本金與分紅已回到可提款餘額。");
+      await loadMe();
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : "收益寶領回失敗");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function playCoinFlip() {
     setLoading(true);
     setStatus("");
@@ -441,6 +536,8 @@ export default function UserDashboard() {
     ...(data?.transactions || []).map((item) => ({ id: `tx-${item.id}`, type: item.type, amount: item.amount, status: item.status, txHash: item.txHash })),
     ...(data?.withdrawals || []).map((item) => ({ id: `wd-${item.id}`, type: "WITHDRAW", amount: item.amount, status: item.status, txHash: item.txHash })),
   ].slice(0, 8);
+  const earnPositions = earnData?.positions || [];
+  const activeEarnPositions = earnPositions.filter((position) => position.status === "ACTIVE");
 
   return (
     <main className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -721,22 +818,65 @@ export default function UserDashboard() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-base font-semibold text-white">收益寶</h2>
-                <p className="mt-1 text-sm text-zinc-400">以賭養息獎金池的 7 天鎖倉預覽。</p>
+                <p className="mt-1 text-sm text-zinc-400">鎖倉本金模擬投入外部 DeFi，外部收益回歸收益寶獎金池，到期後本金與分紅回到可提款餘額。</p>
               </div>
               <Vault className="text-sky-300" size={22} />
             </div>
             <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <MiniMetric label="7 天鎖倉" value="固定週期" icon={<Timer size={16} />} />
-              <MiniMetric label="預估 APY" value="動態" icon={<Trophy size={16} />} />
+              <MiniMetric label={earnData ? `${earnData.config.lockDays} 天鎖倉` : "7 天鎖倉"} value={`APY cap ${formatUsdt(earnData?.config.apyCapPercent ?? 15)}%`} icon={<Timer size={16} />} />
+              <MiniMetric label="外部 DeFi APY" value={`${formatUsdt(earnData?.config.externalApyPercent ?? 8)}%`} icon={<Trophy size={16} />} />
               <MiniMetric label="可投入資金" value={`$${formatUsdt(user?.availableBalanceUsdt)}`} icon={<Wallet size={16} />} />
+              <MiniMetric label="鎖倉本金" value={`$${formatUsdt(earnData?.summary.lockedPrincipal)}`} icon={<Vault size={16} />} />
+              <MiniMetric label="可領回本金" value={`$${formatUsdt(earnData?.summary.redeemablePrincipal)}`} icon={<ArrowDownToLine size={16} />} />
+              <MiniMetric label="收益寶獎金池" value={`$${formatUsdt(earnData?.summary.earnBonusPool)}`} icon={<RefreshCw size={16} />} />
             </div>
-            <div className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <form className="mt-5 rounded-lg border border-zinc-800 bg-zinc-950 p-4" onSubmit={lockEarn}>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
                 <div>
-                  <p className="text-sm font-medium text-zinc-200">獎金池分配</p>
-                  <p className="mt-1 text-xs text-zinc-500">遊戲正利潤依三池模型分配到平台收益、遊戲金庫與收益寶獎金池。</p>
+                  <label className="block text-sm font-medium text-zinc-200" htmlFor="earnAmount">鎖倉收益寶 USDT</label>
+                  <input
+                    id="earnAmount"
+                    className="mt-2 w-full rounded-md border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm outline-none focus:border-emerald-500"
+                    inputMode="decimal"
+                    min={earnData?.config.minLockAmount ?? 10}
+                    value={earnAmount}
+                    onChange={(event) => setEarnAmount(event.target.value)}
+                    placeholder={String(earnData?.config.minLockAmount ?? 10)}
+                  />
+                  <p className="mt-2 text-xs text-zinc-500">最低 ${formatUsdt(earnData?.config.minLockAmount ?? 10)}，可同時建立多筆部位。</p>
                 </div>
-                <button className="rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-500" disabled>鎖倉即將開放</button>
+                <button className="inline-flex items-center justify-center rounded-md bg-sky-600 px-3 py-2 text-sm font-medium text-white hover:bg-sky-500 disabled:cursor-not-allowed disabled:opacity-60" disabled={!user?.walletAddress || loading}>
+                  鎖倉收益寶
+                </button>
+              </div>
+            </form>
+            <div className="mt-5 overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
+              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                <p className="text-sm font-medium text-zinc-200">收益寶部位</p>
+                <span className="text-xs text-zinc-500">{earnData?.summary.activeCount ?? 0} 筆鎖倉 / {earnData?.summary.redeemableCount ?? 0} 筆可領回</span>
+              </div>
+              <div className="divide-y divide-zinc-800">
+                {activeEarnPositions.length ? activeEarnPositions.map((position) => {
+                  const redeemable = new Date(position.unlockAt).getTime() <= Date.now();
+                  return (
+                    <div className="grid gap-3 px-4 py-3 text-sm sm:grid-cols-[1fr_auto] sm:items-center" key={position.id}>
+                      <div>
+                        <p className="font-mono text-zinc-100">${formatUsdt(position.principal)}</p>
+                        <p className="mt-1 text-xs text-zinc-500">鎖倉 {formatDateTime(position.lockedAt)} / 到期 {formatDateTime(position.unlockAt)}</p>
+                      </div>
+                      <button
+                        className={redeemable ? "rounded-md border border-emerald-700 px-3 py-2 text-sm text-emerald-300 hover:bg-emerald-950 disabled:cursor-not-allowed disabled:opacity-60" : "rounded-md border border-zinc-700 px-3 py-2 text-sm text-zinc-500 disabled:cursor-not-allowed"}
+                        disabled={!redeemable || loading}
+                        onClick={() => redeemEarn(position.id)}
+                        type="button"
+                      >
+                        {redeemable ? "領回" : "未到期"}
+                      </button>
+                    </div>
+                  );
+                }) : (
+                  <p className="px-4 py-8 text-center text-sm text-zinc-500">目前沒有收益寶鎖倉部位</p>
+                )}
               </div>
             </div>
           </div>

@@ -4,6 +4,8 @@ const transactionTypeLabels: Record<string, string> = {
   GAME_WIN: "遊戲獲利",
   GAME_LOSS: "遊戲虧損",
   REWARD: "獎勵",
+  EARN_LOCK: "收益寶鎖倉",
+  EARN_REDEEM: "收益寶領回",
 };
 
 const statusLabels: Record<string, string> = {
@@ -30,6 +32,10 @@ const errorLabels: Record<string, string> = {
   "Game bankroll is insufficient": "遊戲金庫不足，暫停派彩風險過高的下注。",
   "Insufficient available balance": "可用餘額不足。",
   "Insufficient balance": "餘額不足。",
+  "Earn position is not active": "收益寶部位不是 active 狀態。",
+  "Earn position is not matured": "收益寶部位尚未到期。",
+  "Earn position not found": "找不到收益寶部位。",
+  "Invalid earn position id": "收益寶部位編號不正確。",
   "Invalid coin flip choice": "猜硬幣選項不正確。",
   "Invalid dice choice": "骰子選項不正確。",
   "Invalid lucky spin segment": "幸運轉盤結果不正確。",

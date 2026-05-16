@@ -29,6 +29,9 @@ export async function GET(request: Request) {
       recentUsers,
       recentTransactions,
       poolEntries,
+      earnActive,
+      earnRedeemable,
+      earnExternalYield,
     ] = await Promise.all([
       prisma.user.aggregate({ _sum: { balanceUsdt: true }, _count: true }),
       prisma.transaction.aggregate({
@@ -63,6 +66,20 @@ export async function GET(request: Request) {
         by: ["pool"],
         _sum: { amount: true },
       }),
+      prisma.earnPosition.aggregate({
+        where: { status: "ACTIVE" },
+        _sum: { principal: true },
+        _count: true,
+      }),
+      prisma.earnPosition.aggregate({
+        where: { status: "ACTIVE", unlockAt: { lte: new Date() } },
+        _sum: { principal: true },
+        _count: true,
+      }),
+      prisma.platformLedgerEntry.aggregate({
+        where: { source: "EARN_EXTERNAL_YIELD" },
+        _sum: { amount: true },
+      }),
     ]);
 
     const totalUserBalances = userBalances._sum.balanceUsdt ?? ZERO;
@@ -84,6 +101,11 @@ export async function GET(request: Request) {
         gameBankroll: gameBankroll.toString(),
         platformRevenue: platformRevenue.toString(),
         earnBonusPool: earnBonusPool.toString(),
+        earnActivePrincipal: decimalToString(earnActive._sum.principal),
+        earnActiveCount: earnActive._count,
+        earnRedeemablePrincipal: decimalToString(earnRedeemable._sum.principal),
+        earnRedeemableCount: earnRedeemable._count,
+        earnExternalYieldTotal: decimalToString(earnExternalYield._sum.amount),
       },
       pendingWithdrawals: pendingWithdrawals.map((withdrawal) => ({
         id: withdrawal.id,

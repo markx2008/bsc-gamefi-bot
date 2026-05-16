@@ -9,7 +9,7 @@ export interface User {
 export interface Transaction {
   id: number;
   userId: number;
-  type: 'DEPOSIT' | 'WITHDRAW' | 'REWARD' | 'GAME_LOSS' | 'GAME_WIN';
+  type: 'DEPOSIT' | 'WITHDRAW' | 'REWARD' | 'GAME_LOSS' | 'GAME_WIN' | 'EARN_LOCK' | 'EARN_REDEEM';
   amount: string;
   txHash: string | null;
   status: 'PENDING' | 'SUCCESS' | 'FAILED' | 'REJECTED';
@@ -73,10 +73,25 @@ export interface GameFairnessCommitment {
   updatedAt: Date;
 }
 
+export interface EarnPosition {
+  id: number;
+  userId: number;
+  principal: string;
+  status: 'ACTIVE' | 'REDEEMED';
+  lockedAt: Date;
+  unlockAt: Date;
+  redeemedAt?: Date | null;
+  externalYieldAmount: string;
+  bonusPoolRewardAmount: string;
+  rewardAmount: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface PlatformLedgerEntry {
   id: number;
   pool: 'GAME_BANKROLL' | 'PLATFORM_REVENUE' | 'EARN_BONUS_POOL';
-  source: 'GAME_ROUND' | 'EARN_EXTERNAL_YIELD' | 'ADMIN_ADJUSTMENT';
+  source: 'GAME_ROUND' | 'EARN_EXTERNAL_YIELD' | 'EARN_REWARD_RELEASE' | 'ADMIN_ADJUSTMENT';
   sourceId?: number | null;
   gameRoundId?: number | null;
   amount: string;

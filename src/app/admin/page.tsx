@@ -17,6 +17,11 @@ type AdminOverview = {
     gameBankroll: string;
     platformRevenue: string;
     earnBonusPool: string;
+    earnActivePrincipal: string;
+    earnActiveCount: number;
+    earnRedeemablePrincipal: string;
+    earnRedeemableCount: number;
+    earnExternalYieldTotal: string;
   };
   pendingWithdrawals: Array<{
     id: number;
@@ -193,6 +198,12 @@ export default function AdminDashboard() {
           <Metric label="遊戲金庫" value={`$${formatUsdt(stats?.gameBankroll)}`} detail="初始金庫 + 遊戲輸贏分錄" icon={<ShieldAlert size={20} />} />
           <Metric label="平台收益" value={`$${formatUsdt(stats?.platformRevenue)}`} detail="遊戲正利潤抽成" icon={<Wallet size={20} />} />
           <Metric label="收益寶獎金池" value={`$${formatUsdt(stats?.earnBonusPool)}`} detail="遊戲補貼與外部收益分錄" icon={<RefreshCw size={20} />} />
+        </section>
+
+        <section className="grid gap-4 md:grid-cols-3">
+          <Metric label="收益寶鎖倉本金" value={`$${formatUsdt(stats?.earnActivePrincipal)}`} detail={`${stats?.earnActiveCount ?? 0} 筆 active`} icon={<Wallet size={20} />} />
+          <Metric label="可領回本金" value={`$${formatUsdt(stats?.earnRedeemablePrincipal)}`} detail={`${stats?.earnRedeemableCount ?? 0} 筆到期`} icon={<CheckCircle size={20} />} />
+          <Metric label="外部 DeFi 收益" value={`$${formatUsdt(stats?.earnExternalYieldTotal)}`} detail="外部收益回歸收益寶獎金池" icon={<RefreshCw size={20} />} />
         </section>
 
         <section className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/70">

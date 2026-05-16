@@ -17,9 +17,11 @@ flowchart LR
   web --> approve[MockUSDT approve]
   web --> deposit[VaultManager deposit]
   web --> withdrawReq[提現申請 API]
+  web --> earnLock[收益寶鎖倉 / 領回 API]
 
   walletLogin --> db[(PostgreSQL<br/>Prisma)]
   withdrawReq --> db
+  earnLock --> db
 
   approve --> usdt[MockUSDT 合約]
   deposit --> vault[VaultManager 合約]
@@ -43,11 +45,12 @@ flowchart LR
 - **提現：** 使用者送出提現申請，Admin 審核後由後端呼叫 `VaultManager.executeWithdrawal`。
 - **遊戲：** 小遊戲不直接碰使用者錢包，而是使用 DB 內部餘額下注與結算；目前已完成猜硬幣、骰子與幸運轉盤 MVP。
 - **公平性：** 遊戲結果使用 Server Seed + Client Seed + Nonce 產生，下注前顯示下一局 server seed hash，結算後揭露 server seed、client seed、nonce 與 digest 供玩家驗證。
+- **收益寶：** 使用者以內部可用餘額建立 7 天鎖倉部位；本金視為可配置到外部 DeFi、借貸或收益策略，外部 DeFi 賺取的收益回歸收益寶獎金池，到期領回時本金與可發分紅回到非鎖倉可提款餘額。
 
 ## 核心機制：以賭養息 (Bet-to-Earn Equilibrium)
 - **遊戲盈餘：** 透過可設定的長期莊家優勢產生，預設試算值為 3%。
 - **三池分配：** 遊戲正利潤可在平台收益、遊戲金庫與收益寶獎金池之間調整；目前 `/simulator` 預設為平台 5%、遊戲金庫 90%、收益寶 5%。
-- **利息補貼：** 收益寶鎖倉本金可配置到外部 DeFi、借貸或收益策略產生外部收益；外部收益收入與收益寶獎金池一起分配給鎖倉 7 天的投資者，並受單期收益上限限制。
+- **利息補貼：** 收益寶鎖倉本金可配置到外部 DeFi、借貸或收益策略產生外部收益；外部 DeFi 收益先回歸收益寶獎金池，再與既有獎金池資金一起分配給鎖倉 7 天的投資者，分紅受單期收益上限限制，本金到期回到非鎖倉可提款餘額。
 - **前端試算：** `/simulator` 可用純前端模型壓測三款遊戲、收益寶獎金池、遊戲金庫健康與平台抽成比例，不連錢包、不串合約。
 
 ## 技術棧 (Tech Stack)
@@ -73,7 +76,8 @@ flowchart LR
 - [x] 三遊戲公平性 MVP：Server Seed + Client Seed + Nonce、下注前 hash commitment、結算後揭露驗證資料
 - [ ] BSC Testnet 真入金端到端驗證
 - [x] 高波動幸運轉盤金庫風控：下注前檢查遊戲金庫可承受最大頭獎派彩
-- [ ] 7 天鎖倉收益寶、浮動分紅、APY cap 與健康監控
+- [x] 7 天鎖倉收益寶 MVP：內部可用餘額鎖倉、多筆部位、外部 DeFi 收益回歸獎金池、到期手動領回本金與 APY cap 分紅
+- [ ] 收益寶完整健康監控：即時 APY、實現 APY、逾期提款與抽成建議
 - [ ] BSC Testnet 部署與測試
 
 ## Web MVP 驗證
@@ -106,10 +110,10 @@ Docker Compose 會自動建立本機 PostgreSQL，並把 app container 的 `DATA
 
 ### 手動啟動
 
-1. 設定 `.env`：`DATABASE_URL`、`JWT_SECRET`、`ADMIN_WALLET_ADDRESS`、`VAULT_ADDRESS`、`USDT_ADDRESS`。
+1. 設定 `.env`：`DATABASE_URL`、`JWT_SECRET`、`ADMIN_WALLET_ADDRESS`、`VAULT_ADDRESS`、`USDT_ADDRESS`；收益寶可選 `EARN_LOCK_DAYS`、`EARN_MIN_LOCK_USDT`、`EARN_APY_CAP_PERCENT`、`EARN_EXTERNAL_APY_PERCENT`。
 2. 啟動資料庫初始化：`npm run db:init`。
 3. 啟動 web：`npm run dev`。
-4. 開啟 `/`，使用 MetaMask 簽名登入一般使用者 Dashboard；此頁包含餘額、儲值/提現、遊戲入口、收益寶入口與近期紀錄。
+4. 開啟 `/`，使用 MetaMask 簽名登入一般使用者 Dashboard；此頁包含餘額、儲值/提現、遊戲入口、收益寶鎖倉/領回與近期紀錄。
 5. 開啟 `/simulator` 使用純前端試算頁；可調整三款遊戲比例、平台/遊戲金庫/收益寶分配、收益寶資金比例與健康 APY 門檻，觀察池子長期變化。
 6. 開啟 `/test` 使用 Debug 工具頁；此頁只保留錢包登入、合約狀態檢查與 MockUSDT 測試充值，正式入金與提現請回 `/` 使用。
 7. 使用 `ADMIN_WALLET_ADDRESS` 對應錢包登入後，開啟 `/admin` 驗證提現審核與營運資料。
