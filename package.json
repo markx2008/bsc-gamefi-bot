@@ -30,6 +30,7 @@
     "test:game-ledger": "node scripts/verify-game-ledger.mjs",
     "test:fairness": "node scripts/verify-provably-fair.mjs",
     "test:earn-ledger": "node scripts/verify-earn-ledger.mjs",
+    "test:admin-health": "node scripts/verify-admin-health.mjs",
     "test:simulator": "node scripts/verify-simulator-engine.mjs",
     "test:web-mvp": "node scripts/verify-web-mvp-routes.mjs",
     "test:docker-stack": "node scripts/verify-docker-compose-stack.mjs"
