@@ -5,6 +5,18 @@ import { CheckCircle, Loader2, RefreshCw, ShieldAlert, Users, Wallet, XCircle } 
 import Link from "next/link";
 import { statusLabel, transactionTypeLabel, translateUiError } from "@/lib/ui-labels";
 
+type AdminHealth = {
+  overallStatus: "HEALTHY" | "WARNING" | "UNHEALTHY";
+  instantApyPercent: string;
+  realizedApyPercent: string;
+  healthyApyThresholdPercent: string;
+  withdrawalShortfall: string;
+  isApyHealthy: boolean;
+  isWithdrawalHealthy: boolean;
+  isGameBankrollHealthy: boolean;
+  warnings: string[];
+};
+
 type AdminOverview = {
   stats: {
     totalUsers: number;
@@ -23,6 +35,7 @@ type AdminOverview = {
     earnRedeemableCount: number;
     earnExternalYieldTotal: string;
   };
+  health: AdminHealth;
   pendingWithdrawals: Array<{
     id: number;
     amount: string;
@@ -73,6 +86,36 @@ function formatUsdt(value: string | number | null | undefined) {
 function shortAddress(value: string | null | undefined) {
   if (!value) return "-";
   return `${value.slice(0, 6)}...${value.slice(-4)}`;
+}
+
+function formatPercent(value: string | number | null | undefined) {
+  const numeric = Number(value ?? 0);
+  return numeric.toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
+function healthStatusLabel(value: string | null | undefined) {
+  const labels: Record<string, string> = {
+    HEALTHY: "健康",
+    WARNING: "注意",
+    UNHEALTHY: "不健康",
+  };
+  return value ? labels[value] || value : "尚無資料";
+}
+
+function healthWarningLabel(value: string) {
+  const labels: Record<string, string> = {
+    APY_BELOW_THRESHOLD: "即時 APY 低於健康門檻",
+    WITHDRAWAL_SHORTFALL: "待審提款超過可用流動性",
+    GAME_BANKROLL_NEGATIVE: "帳面遊戲金庫低於 0",
+    NO_ACTIVE_EARN_PRINCIPAL: "目前沒有 active 收益寶本金",
+  };
+  return labels[value] || value;
+}
+
+function healthTone(value: string | null | undefined) {
+  if (value === "HEALTHY") return "green";
+  if (value === "UNHEALTHY") return "red";
+  return "amber";
 }
 
 function walletLoginMessage(walletAddress: string) {
@@ -194,6 +237,18 @@ export default function AdminDashboard() {
           <Metric label="使用者數" value={String(stats?.totalUsers ?? 0)} detail={`可用流動性 $${formatUsdt(stats?.availableLiquidity)}`} icon={<Users size={20} />} />
         </section>
 
+        <section className="grid gap-4 xl:grid-cols-[1.1fr_1.9fr]">
+          <HealthStatusCard health={overview?.health} />
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <Metric label="即時 APY" value={`${formatPercent(overview?.health?.instantApyPercent)}%`} detail={`健康門檻 ${formatPercent(overview?.health?.healthyApyThresholdPercent)}%`} icon={<RefreshCw size={20} />} />
+            <Metric label="實現 APY" value={`${formatPercent(overview?.health?.realizedApyPercent)}%`} detail="已領回收益寶歷史" icon={<CheckCircle size={20} />} />
+            <Metric label="提款缺口" value={`$${formatUsdt(overview?.health?.withdrawalShortfall)}`} detail="待審提款與可用流動性比較" icon={<ShieldAlert size={20} />} />
+            <Metric label="帳面遊戲金庫" value={`$${formatUsdt(stats?.gameBankroll)}`} detail={overview?.health?.isGameBankrollHealthy ? "DB 帳面金庫非負" : "DB 帳面金庫低於 0"} icon={<ShieldAlert size={20} />} />
+            <Metric label="收益寶獎金池" value={`$${formatUsdt(stats?.earnBonusPool)}`} detail="可支撐鎖倉分紅" icon={<RefreshCw size={20} />} />
+            <Metric label="鎖倉本金" value={`$${formatUsdt(stats?.earnActivePrincipal)}`} detail={`${stats?.earnActiveCount ?? 0} 筆 active`} icon={<Wallet size={20} />} />
+          </div>
+        </section>
+
         <section className="grid gap-4 md:grid-cols-3">
           <Metric label="遊戲金庫" value={`$${formatUsdt(stats?.gameBankroll)}`} detail="初始金庫 + 遊戲輸贏分錄" icon={<ShieldAlert size={20} />} />
           <Metric label="平台收益" value={`$${formatUsdt(stats?.platformRevenue)}`} detail="遊戲正利潤抽成" icon={<Wallet size={20} />} />
@@ -274,6 +329,36 @@ function Metric({ label, value, detail, icon }: { label: string; value: string; 
       </div>
       <p className="mt-2 text-2xl font-semibold text-white">{value}</p>
       {detail ? <p className="mt-1 text-xs text-zinc-500">{detail}</p> : null}
+    </div>
+  );
+}
+
+function HealthStatusCard({ health }: { health: AdminHealth | undefined }) {
+  const tone = healthTone(health?.overallStatus);
+  const toneClasses = {
+    green: "border-emerald-800 bg-emerald-950/40 text-emerald-200",
+    amber: "border-amber-800 bg-amber-950/40 text-amber-200",
+    red: "border-red-800 bg-red-950/40 text-red-200",
+  }[tone];
+
+  return (
+    <div className={`rounded-lg border p-5 ${toneClasses}`}>
+      <p className="text-sm opacity-80">營運健康</p>
+      <p className="mt-2 text-3xl font-semibold">{healthStatusLabel(health?.overallStatus)}</p>
+      <p className="mt-2 text-sm opacity-80">
+        APY 門檻 {formatPercent(health?.healthyApyThresholdPercent)}% / 提款缺口 ${formatUsdt(health?.withdrawalShortfall)}
+      </p>
+      {health?.warnings.length ? (
+        <div className="mt-4 flex flex-wrap gap-2">
+          {health.warnings.map((warning) => (
+            <span className="rounded-md border border-current px-2 py-1 text-xs" key={warning}>
+              {healthWarningLabel(warning)}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-4 text-xs opacity-70">所有健康條件目前達標。</p>
+      )}
     </div>
   );
 }

@@ -131,6 +131,13 @@ assertIncludes(adminPage, "待審提現", "admin dashboard");
 assertIncludes(adminPage, "收益寶鎖倉本金", "admin dashboard");
 assertIncludes(adminPage, "可領回本金", "admin dashboard");
 assertIncludes(adminPage, "外部 DeFi 收益", "admin dashboard");
+assertIncludes(adminPage, "營運健康", "admin dashboard");
+assertIncludes(adminPage, "即時 APY", "admin dashboard");
+assertIncludes(adminPage, "實現 APY", "admin dashboard");
+assertIncludes(adminPage, "提款缺口", "admin dashboard");
+assertIncludes(adminPage, "帳面遊戲金庫", "admin dashboard");
+assertIncludes(adminPage, "healthStatusLabel", "admin dashboard");
+assertIncludes(adminPage, "healthWarningLabel", "admin dashboard");
 assertIncludes(adminPage, "核准", "admin dashboard");
 assertIncludes(adminPage, "拒絕", "admin dashboard");
 
